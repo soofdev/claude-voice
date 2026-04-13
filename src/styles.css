@@ -1,0 +1,112 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+  font-size: 14px;
+  color: #0f0f0f;
+  background-color: #f6f6f6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  background: #fff;
+  color: inherit;
+}
+
+input[type="range"] {
+  width: 100%;
+}
+
+button {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+button:hover {
+  border-color: #888;
+}
+
+.hook {
+  display: block;
+  background: #1a1a1a;
+  color: #e6e6e6;
+  padding: 10px;
+  border-radius: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.hint {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+}
+
+.status {
+  min-height: 18px;
+  font-size: 12px;
+  color: #2a8f3c;
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f0f0f0;
+    background-color: #1f1f1f;
+  }
+  input[type="text"],
+  input[type="number"],
+  select,
+  button {
+    background: #2b2b2b;
+    color: #f0f0f0;
+    border-color: #444;
+  }
+  .hint {
+    color: #aaa;
+  }
+}

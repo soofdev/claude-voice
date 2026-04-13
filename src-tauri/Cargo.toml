@@ -1,0 +1,23 @@
+[package]
+name = "claude-voice"
+version = "0.1.0"
+description = "Bridge Claude Code output to macOS text-to-speech"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "claude_voice_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+dirs = "5"
+anyhow = "1"

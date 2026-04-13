@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Voice Settings</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Claude Voice</h1>
+
+      <section class="field">
+        <label class="row">
+          <input type="checkbox" id="enabled" />
+          <span>Speaking enabled</span>
+        </label>
+      </section>
+
+      <section class="field">
+        <label for="voice">Voice</label>
+        <select id="voice"></select>
+      </section>
+
+      <section class="field">
+        <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
+        <input type="range" id="rate" min="120" max="320" step="5" />
+      </section>
+
+      <section class="field">
+        <label for="port">HTTP port</label>
+        <input type="number" id="port" min="1024" max="65535" />
+      </section>
+
+      <section class="field row">
+        <button id="test">Test voice</button>
+        <button id="stop">Stop speaking</button>
+        <button id="save">Save</button>
+      </section>
+
+      <section class="field">
+        <label>Claude Code hook command</label>
+        <code id="hook-cmd" class="hook"></code>
+        <button id="copy-hook">Copy</button>
+        <p class="hint">
+          Add this as a <b>Stop</b> hook in <code>~/.claude/settings.json</code>.
+        </p>
+      </section>
+
+      <p id="status" class="status"></p>
+    </main>
+  </body>
+</html>
