@@ -163,6 +163,18 @@ body.fading-out .card {
   color: #ffd86a;
 }
 
+#original-btn.active {
+  background: rgba(120, 200, 255, 0.28);
+  color: #cfe7ff;
+}
+
+.text.original-mode {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  color: #d8d8dc;
+  white-space: pre-wrap;
+}
+
 .links {
   display: flex;
   flex-wrap: wrap;

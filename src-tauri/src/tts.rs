@@ -29,6 +29,7 @@ pub struct SessionTag {
 #[derive(Serialize, Clone)]
 struct StartPayload {
     text: String,
+    original: String,
     words: Vec<Word>,
     links: Vec<Link>,
     session: Option<SessionTag>,
@@ -318,7 +319,7 @@ async fn run_pipeline(
         }
     }
 
-    play_text(inner, app, spoken, links, cfg, audio_path, words, session).await;
+    play_text(inner, app, spoken, original, links, cfg, audio_path, words, session).await;
 }
 
 async fn replay_pipeline(
@@ -356,13 +357,26 @@ async fn replay_pipeline(
     };
 
     let entry_session = entry.session.clone();
-    play_text(inner, app, entry.spoken, entry.links, cfg, audio_path, words, entry_session).await;
+    let entry_original = entry.original.clone();
+    play_text(
+        inner,
+        app,
+        entry.spoken,
+        entry_original,
+        entry.links,
+        cfg,
+        audio_path,
+        words,
+        entry_session,
+    )
+    .await;
 }
 
 async fn play_text(
     inner: Arc<TtsInner>,
     app: Option<AppHandle>,
     spoken: String,
+    original: String,
     links: Vec<Link>,
     cfg: Settings,
     audio_path: Option<std::path::PathBuf>,
@@ -374,6 +388,7 @@ async fn play_text(
             "voice:start",
             StartPayload {
                 text: spoken.clone(),
+                original: original.clone(),
                 words: words.clone(),
                 links: links.clone(),
                 session: session.clone(),

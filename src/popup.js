@@ -19,9 +19,13 @@ const historyPanel = document.getElementById("history-panel");
 const historyList = document.getElementById("history-list");
 const historyEmpty = document.getElementById("history-empty");
 const historyClear = document.getElementById("history-clear");
+const originalBtn = document.getElementById("original-btn");
 
 const MAX_CHIPS = 5;
 let historyOpen = false;
+let showingOriginal = false;
+let currentSpokenText = "";
+let currentOriginalText = "";
 
 let paused = false;
 let pinned = false;
@@ -167,6 +171,7 @@ function startHighlight(text, list) {
 
 event.listen("voice:start", (e) => {
   const text = e.payload?.text ?? "";
+  const original = e.payload?.original ?? text;
   const list = e.payload?.words ?? [];
   const links = e.payload?.links ?? [];
   const session = e.payload?.session ?? null;
@@ -179,9 +184,36 @@ event.listen("voice:start", (e) => {
   textEl.style.color = "";
   applySessionTheme(session);
   setPaused(false);
+  currentSpokenText = text;
+  currentOriginalText = original;
+  setOriginalMode(false);
   startHighlight(text, list);
   renderLinks(links);
 });
+
+function setOriginalMode(on) {
+  showingOriginal = on;
+  originalBtn.classList.toggle("active", on);
+  originalBtn.title = on ? "Show spoken version (T)" : "Show full original (T)";
+  if (on) {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    textEl.classList.add("original-mode");
+    textEl.textContent = currentOriginalText || currentSpokenText;
+    textEl.scrollTop = 0;
+  } else {
+    textEl.classList.remove("original-mode");
+    if (words && words.length > 0) {
+      renderWords(currentSpokenText, words);
+      activeIndex = -1;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    } else {
+      textEl.textContent = currentSpokenText;
+    }
+  }
+}
 
 function applySessionTheme(session) {
   const root = document.documentElement;
@@ -256,6 +288,7 @@ pauseBtn.addEventListener("click", () => core.invoke("toggle_pause"));
 stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
 historyBtn.addEventListener("click", () => toggleHistory());
+originalBtn.addEventListener("click", () => setOriginalMode(!showingOriginal));
 historyClear.addEventListener("click", async () => {
   try {
     await core.invoke("clear_history");
@@ -370,5 +403,8 @@ document.addEventListener("keydown", (e) => {
     }
   } else if (e.code === "KeyP") {
     core.invoke("toggle_pin_popup");
+  } else if (e.code === "KeyT") {
+    e.preventDefault();
+    setOriginalMode(!showingOriginal);
   }
 });
