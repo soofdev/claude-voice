@@ -1,3 +1,4 @@
+mod history;
 mod link_extract;
 mod server;
 mod settings;
@@ -7,6 +8,7 @@ mod tts;
 
 use std::sync::Arc;
 
+use history::{HistoryEntry, HistoryStore};
 use server::AppState;
 use settings::{Settings, SettingsStore};
 use tauri::{
@@ -96,6 +98,34 @@ fn toggle_pause(tts: tauri::State<Arc<TtsEngine>>) {
 }
 
 #[tauri::command]
+fn get_history(store: tauri::State<Arc<HistoryStore>>) -> Vec<HistoryEntry> {
+    store.list()
+}
+
+#[tauri::command]
+fn replay_history(
+    id: String,
+    tts: tauri::State<Arc<tts::TtsEngine>>,
+    history: tauri::State<Arc<HistoryStore>>,
+    settings: tauri::State<Arc<SettingsStore>>,
+) -> Result<(), String> {
+    let entry = history.get(&id).ok_or_else(|| "entry not found".to_string())?;
+    let cfg = settings.get();
+    tts.replay(entry, cfg);
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_history(
+    history: tauri::State<Arc<HistoryStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    history.clear();
+    let _ = app.emit("history:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
     let port = store.get().port;
     format!(
@@ -106,7 +136,9 @@ fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let settings_store = Arc::new(SettingsStore::new());
+    let history_store = Arc::new(HistoryStore::new());
     let tts = Arc::new(TtsEngine::new());
+    tts.set_history(history_store.clone());
 
     let initial = settings_store.get();
     let port = initial.port;
@@ -119,6 +151,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(settings_store.clone())
+        .manage(history_store.clone())
         .manage(tts.clone())
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -129,6 +162,9 @@ pub fn run() {
             stop_speaking,
             toggle_pause,
             toggle_pin_popup,
+            get_history,
+            replay_history,
+            clear_history,
             hook_command,
         ])
         .setup(move |app| {

@@ -37,6 +37,8 @@ pub struct Settings {
     pub summary_model: String,
     #[serde(default = "default_summary_threshold")]
     pub summary_threshold_chars: u32,
+    #[serde(default = "default_summary_brevity")]
+    pub summary_brevity: String,
 }
 
 fn default_true() -> bool {
@@ -66,6 +68,9 @@ fn default_summary_model() -> String {
 fn default_summary_threshold() -> u32 {
     180
 }
+fn default_summary_brevity() -> String {
+    "balanced".into()
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -85,6 +90,7 @@ impl Default for Settings {
             anthropic_api_key: String::new(),
             summary_model: default_summary_model(),
             summary_threshold_chars: default_summary_threshold(),
+            summary_brevity: default_summary_brevity(),
         }
     }
 }

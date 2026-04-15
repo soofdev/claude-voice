@@ -13,6 +13,11 @@
         <span class="dot" id="dot" data-tauri-drag-region></span>
         <span class="title" id="title" data-tauri-drag-region>Claude speaking</span>
         <div class="controls">
+          <button id="history-btn" type="button" title="History">
+            <svg viewBox="0 0 24 24" width="14" height="14">
+              <path d="M3 7 L21 7 M3 12 L21 12 M3 17 L21 17" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+          </button>
           <button id="pin-btn" type="button" title="Pin popup">
             <svg viewBox="0 0 24 24" width="14" height="14">
               <path d="M14 2 L22 10 L17 11 L14 14 L14 20 L13 21 L8 16 L3 21 L2 20 L7 15 L2 10 L3 9 L9 9 L12 6 L13 1 Z" fill="currentColor"/>
@@ -36,6 +41,14 @@
       </div>
       <div class="text" id="text"></div>
       <div class="links" id="links" hidden></div>
+      <div class="history-panel" id="history-panel" hidden>
+        <div class="history-head">
+          <span class="history-title">History</span>
+          <button id="history-clear" type="button" class="history-clear">Clear</button>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+        <p id="history-empty" class="history-empty" hidden>No messages yet.</p>
+      </div>
     </div>
   </body>
 </html>

@@ -10,12 +10,43 @@ event.listen("voice:error", (e) => {
   }
 });
 
+event.listen("settings:changed", (e) => {
+  if (e.payload) currentSettings = e.payload;
+});
+
 const el = (id) => document.getElementById(id);
 
 let elevenVoices = [];
+let currentSettings = {};
+
+const PRESET_ELEVEN_VOICES = [
+  { id: "fvVBPXuE7f1iX3dZLKFy", name: "Preset A" },
+  { id: "lOg4rs9vOIKiYNmAA4C5", name: "Preset B" },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam (free)" },
+];
+
+function mergeWithPresets(list, selectedId) {
+  const seen = new Set();
+  const merged = [];
+  for (const v of PRESET_ELEVEN_VOICES) {
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+    merged.push(v);
+  }
+  for (const v of list || []) {
+    if (!v || !v.id || seen.has(v.id)) continue;
+    seen.add(v.id);
+    merged.push(v);
+  }
+  if (selectedId && !seen.has(selectedId)) {
+    merged.unshift({ id: selectedId, name: "Saved voice" });
+  }
+  return merged;
+}
 
 async function loadSettings() {
   const settings = await invoke("get_settings");
+  currentSettings = settings;
   const sayVoices = await invoke("list_voices");
   const hookCmd = await invoke("hook_command");
 
@@ -41,7 +72,7 @@ async function loadSettings() {
   el("eleven-speed").value = settings.elevenlabs_speed;
   el("eleven-speed-value").textContent = Number(settings.elevenlabs_speed).toFixed(2);
   populateElevenVoices(
-    [{ id: settings.elevenlabs_voice_id, name: settings.elevenlabs_voice_id }],
+    mergeWithPresets([], settings.elevenlabs_voice_id),
     settings.elevenlabs_voice_id,
   );
 
@@ -50,6 +81,7 @@ async function loadSettings() {
   el("summary-model").value = settings.summary_model;
   el("summary-threshold").value = settings.summary_threshold_chars;
   el("threshold-value").textContent = settings.summary_threshold_chars;
+  el("summary-brevity").value = settings.summary_brevity || "balanced";
 
   el("port").value = settings.port;
   el("hook-cmd").textContent = hookCmd;
@@ -78,6 +110,7 @@ function updateBackendVisibility() {
 
 function collect() {
   return {
+    ...currentSettings,
     enabled: el("enabled").checked,
     port: parseInt(el("port").value, 10),
     show_popup: el("show-popup").checked,
@@ -92,17 +125,35 @@ function collect() {
     anthropic_api_key: el("anthropic-key").value,
     summary_model: el("summary-model").value,
     summary_threshold_chars: parseInt(el("summary-threshold").value, 10),
+    summary_brevity: el("summary-brevity").value || "balanced",
   };
 }
 
 async function save() {
+  const btn = el("save");
   try {
-    await invoke("set_settings", { new: collect() });
-    setStatus("Saved.");
+    const next = collect();
+    await invoke("set_settings", { new: next });
+    currentSettings = next;
     el("hook-cmd").textContent = await invoke("hook_command");
+    flashSaveButton(btn, "Saved ✓", "saved");
   } catch (e) {
-    setStatus(`Error: ${e}`);
+    setStatus(`Error: ${e}`, true);
+    flashSaveButton(btn, "Error", "error");
   }
+}
+
+function flashSaveButton(btn, label, cls) {
+  const original = btn.dataset.label || btn.textContent;
+  btn.dataset.label = original;
+  btn.disabled = true;
+  btn.textContent = label;
+  btn.classList.add(cls);
+  setTimeout(() => {
+    btn.classList.remove(cls);
+    btn.textContent = original;
+    btn.disabled = false;
+  }, 1500);
 }
 
 function setStatus(msg, isError = false) {
@@ -123,7 +174,7 @@ async function refreshElevenVoices() {
     const result = await invoke("list_elevenlabs_voices", { apiKey: key });
     const voices = result.map(([id, name]) => ({ id, name }));
     const current = el("eleven-voice").value;
-    populateElevenVoices(voices, current);
+    populateElevenVoices(mergeWithPresets(voices, current), current);
     setStatus(`Loaded ${voices.length} voices.`);
   } catch (e) {
     setStatus(`Error: ${e}`, true);

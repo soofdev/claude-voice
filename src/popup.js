@@ -1,5 +1,9 @@
 const { event, core, window: tauriWindow } = window.__TAURI__;
 const popupWindow = tauriWindow.getCurrentWindow();
+const { LogicalSize } = tauriWindow;
+
+const SIZE_COLLAPSED = { w: 380, h: 180 };
+const SIZE_EXPANDED = { w: 380, h: 500 };
 
 const textEl = document.getElementById("text");
 const titleEl = document.getElementById("title");
@@ -10,8 +14,14 @@ const pinBtn = document.getElementById("pin-btn");
 const pauseIcon = document.getElementById("pause-icon");
 const playIcon = document.getElementById("play-icon");
 const linksEl = document.getElementById("links");
+const historyBtn = document.getElementById("history-btn");
+const historyPanel = document.getElementById("history-panel");
+const historyList = document.getElementById("history-list");
+const historyEmpty = document.getElementById("history-empty");
+const historyClear = document.getElementById("history-clear");
 
 const MAX_CHIPS = 5;
+let historyOpen = false;
 
 let paused = false;
 let pinned = false;
@@ -203,6 +213,94 @@ event.listen("voice:error", async (e) => {
 pauseBtn.addEventListener("click", () => core.invoke("toggle_pause"));
 stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
+historyBtn.addEventListener("click", () => toggleHistory());
+historyClear.addEventListener("click", async () => {
+  try {
+    await core.invoke("clear_history");
+    await loadHistory();
+  } catch (e) {
+    console.error("clear_history failed", e);
+  }
+});
+
+function formatTime(ms) {
+  const d = new Date(Number(ms));
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return d.toLocaleDateString();
+}
+
+function renderHistoryEntry(entry) {
+  const li = document.createElement("li");
+  li.className = "history-entry";
+
+  const row = document.createElement("div");
+  row.className = "row";
+  const time = document.createElement("span");
+  time.className = "time";
+  time.textContent = formatTime(entry.timestamp_ms);
+  const replay = document.createElement("button");
+  replay.className = "replay";
+  replay.textContent = "Replay";
+  replay.addEventListener("click", async () => {
+    try {
+      await core.invoke("replay_history", { id: entry.id });
+    } catch (e) {
+      console.error("replay_history failed", e);
+    }
+  });
+  row.appendChild(time);
+  row.appendChild(replay);
+
+  const preview = document.createElement("div");
+  preview.className = "preview";
+  preview.textContent = (entry.spoken || entry.original || "").trim().replace(/\s+/g, " ");
+
+  li.appendChild(row);
+  li.appendChild(preview);
+  return li;
+}
+
+async function loadHistory() {
+  try {
+    const entries = await core.invoke("get_history");
+    historyList.innerHTML = "";
+    if (!entries || entries.length === 0) {
+      historyEmpty.hidden = false;
+      return;
+    }
+    historyEmpty.hidden = true;
+    for (const e of entries) {
+      historyList.appendChild(renderHistoryEntry(e));
+    }
+  } catch (e) {
+    console.error("get_history failed", e);
+  }
+}
+
+async function toggleHistory(force) {
+  const next = typeof force === "boolean" ? force : !historyOpen;
+  historyOpen = next;
+  historyPanel.hidden = !next;
+  historyBtn.classList.toggle("active", next);
+  const target = next ? SIZE_EXPANDED : SIZE_COLLAPSED;
+  try {
+    await popupWindow.setSize(new LogicalSize(target.w, target.h));
+  } catch (e) {
+    console.error("setSize failed", e);
+  }
+  if (next) await loadHistory();
+}
+
+event.listen("history:changed", () => {
+  if (historyOpen) loadHistory();
+});
 
 event.listen("settings:changed", (e) => {
   const cfg = e.payload;

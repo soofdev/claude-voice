@@ -48,10 +48,21 @@ button.primary {
   background: #2f6feb;
   color: #fff;
   border-color: #2f6feb;
+  transition: background 180ms ease, border-color 180ms ease;
 }
 button.primary:hover {
   background: #1f5bd0;
   border-color: #1f5bd0;
+}
+button.primary.saved {
+  background: #2a8f3c;
+  border-color: #2a8f3c;
+  color: #fff;
+}
+button.primary.error {
+  background: #c34040;
+  border-color: #c34040;
+  color: #fff;
 }
 
 input[type="password"] {
