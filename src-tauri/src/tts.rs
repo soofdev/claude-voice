@@ -472,24 +472,14 @@ fn maybe_prepend_session_prefix(
 }
 
 fn brevity_for(level: &str) -> (&'static str, u32) {
-    match level {
-        "detailed" => (
-            "Preserve all important information. Rephrase naturally for speech; multiple sentences are fine. Do not omit meaningful details.",
-            2000,
-        ),
-        "brief" => (
-            "Summarize the main idea in one or two short sentences. Drop supporting details.",
-            300,
-        ),
-        "minimal" => (
-            "State only the single main point or conclusion in one short sentence. Nothing else.",
-            150,
-        ),
-        _ => (
-            "Rephrase into one short paragraph. Keep the key points and drop minor details.",
-            800,
-        ),
-    }
+    const MAX_OUTPUT_TOKENS: u32 = 4096;
+    let instruction = match level {
+        "detailed" => "Preserve all important information. Rephrase naturally for speech; multiple sentences are fine. Do not omit meaningful details.",
+        "brief" => "Summarize the main idea in one or two short sentences. Drop supporting details.",
+        "minimal" => "State only the single main point or conclusion in one short sentence. Nothing else.",
+        _ => "Rephrase into one short paragraph. Keep the key points and drop minor details.",
+    };
+    (instruction, MAX_OUTPUT_TOKENS)
 }
 
 fn emit_error(app: &Option<AppHandle>, message: &str) {
@@ -540,6 +530,14 @@ async fn summarize(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let stop_reason = v
+        .get("stop_reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if stop_reason == "max_tokens" {
+        eprintln!("[claude-voice] summarizer hit max_tokens cap; rephrase was clipped");
+        anyhow::bail!("Summarizer hit output cap — try a shorter brevity level or increase the cap");
+    }
     Ok(text)
 }
 
