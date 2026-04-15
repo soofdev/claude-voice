@@ -304,12 +304,9 @@ async fn run_pipeline(
         match fetch_elevenlabs(&inner.http, &spoken, &cfg, &dest).await {
             Ok(ws) => (Some(dest), ws),
             Err(e) => {
-                eprintln!("[claude-voice] elevenlabs fetch failed: {e}");
-                emit_error(&app, &format!("Playback failed: {e}"));
-                if let Some(app) = &app {
-                    let _ = app.emit("voice:end", ());
-                }
-                return;
+                eprintln!("[claude-voice] elevenlabs fetch failed, falling back to say: {e}");
+                emit_error(&app, &format!("ElevenLabs unavailable — using system voice. ({e})"));
+                (None, approximate_words(&spoken, cfg.rate))
             }
         }
     } else {
@@ -368,12 +365,9 @@ async fn replay_pipeline(
             match fetch_elevenlabs(&inner.http, &entry.spoken, &cfg, &dest).await {
                 Ok(ws) => (Some(dest), ws),
                 Err(e) => {
-                    eprintln!("[claude-voice] replay fetch failed: {e}");
-                    emit_error(&app, &format!("Replay failed: {e}"));
-                    if let Some(app) = &app {
-                        let _ = app.emit("voice:end", ());
-                    }
-                    return;
+                    eprintln!("[claude-voice] replay fetch failed, falling back to say: {e}");
+                    emit_error(&app, &format!("ElevenLabs unavailable — using system voice. ({e})"));
+                    (None, approximate_words(&entry.spoken, cfg.rate))
                 }
             }
         } else {

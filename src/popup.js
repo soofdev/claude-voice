@@ -304,10 +304,11 @@ event.listen("voice:error", async (e) => {
   textEl.style.color = "#ff8a8a";
   try { await popupWindow.show(); } catch {}
   setTimeout(async () => {
+    if (!errorShowing) return;
     errorShowing = false;
     textEl.textContent = "";
     textEl.style.color = "";
-    titleEl.textContent = "Claude speaking";
+    titleEl.textContent = activeTitle || "Claude speaking";
     if (!pinned) {
       try { await popupWindow.hide(); } catch {}
     }
