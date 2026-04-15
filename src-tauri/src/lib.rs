@@ -1,6 +1,7 @@
 mod history;
 mod link_extract;
 mod server;
+mod sessions;
 mod settings;
 mod text_clean;
 mod transcript;
@@ -10,9 +11,10 @@ use std::sync::Arc;
 
 use history::{HistoryEntry, HistoryStore};
 use server::AppState;
+use sessions::{SessionInfo, SessionsStore};
 use settings::{Settings, SettingsStore};
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{TrayIconBuilder, TrayIconEvent},
     Emitter, Listener, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
 };
@@ -98,6 +100,58 @@ fn toggle_pause(tts: tauri::State<Arc<TtsEngine>>) {
 }
 
 #[tauri::command]
+fn get_sessions(store: tauri::State<Arc<SessionsStore>>) -> Vec<SessionInfo> {
+    store.list()
+}
+
+#[tauri::command]
+fn set_session_enabled(
+    id: String,
+    enabled: bool,
+    store: tauri::State<Arc<SessionsStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    store.set_enabled(&id, enabled);
+    let _ = app.emit("sessions:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_session(
+    id: String,
+    label: String,
+    store: tauri::State<Arc<SessionsStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    store.rename(&id, &label);
+    let _ = app.emit("sessions:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn set_session_voice(
+    id: String,
+    voice_id: Option<String>,
+    store: tauri::State<Arc<SessionsStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    store.set_voice(&id, voice_id);
+    let _ = app.emit("sessions:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_session(
+    id: String,
+    store: tauri::State<Arc<SessionsStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    store.remove(&id);
+    let _ = app.emit("sessions:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 fn get_history(store: tauri::State<Arc<HistoryStore>>) -> Vec<HistoryEntry> {
     store.list()
 }
@@ -137,21 +191,18 @@ fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
 pub fn run() {
     let settings_store = Arc::new(SettingsStore::new());
     let history_store = Arc::new(HistoryStore::new());
+    let sessions_store = Arc::new(SessionsStore::new());
     let tts = Arc::new(TtsEngine::new());
     tts.set_history(history_store.clone());
 
     let initial = settings_store.get();
     let port = initial.port;
 
-    let state_for_server = AppState {
-        tts: tts.clone(),
-        settings: settings_store.clone(),
-    };
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(settings_store.clone())
         .manage(history_store.clone())
+        .manage(sessions_store.clone())
         .manage(tts.clone())
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -165,6 +216,11 @@ pub fn run() {
             get_history,
             replay_history,
             clear_history,
+            get_sessions,
+            set_session_enabled,
+            rename_session,
+            set_session_voice,
+            remove_session,
             hook_command,
         ])
         .setup(move |app| {
@@ -248,6 +304,18 @@ pub fn run() {
                 initial.pin_popup,
                 None::<&str>,
             )?;
+            let sessions_submenu = Submenu::with_id_and_items(
+                &handle,
+                "sessions_submenu",
+                "Sessions",
+                true,
+                &[],
+            )?;
+            rebuild_sessions_submenu(
+                &sessions_submenu,
+                &sessions_store.list(),
+                &handle,
+            )?;
             let settings_item =
                 MenuItem::with_id(&handle, "open_settings", "Settings…", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(&handle, "quit", "Quit", true, None::<&str>)?;
@@ -260,6 +328,7 @@ pub fn run() {
                     &stop_item,
                     &PredefinedMenuItem::separator(&handle)?,
                     &pin_item,
+                    &sessions_submenu,
                     &settings_item,
                     &PredefinedMenuItem::separator(&handle)?,
                     &quit_item,
@@ -271,6 +340,18 @@ pub fn run() {
                 pin_popup: pin_item.clone(),
             });
             app.manage(menu_refs);
+
+            let submenu_listen = sessions_submenu.clone();
+            let sessions_for_listen = sessions_store.clone();
+            let handle_for_listen = handle.clone();
+            handle.listen("sessions:changed", move |_| {
+                let list = sessions_for_listen.list();
+                if let Err(e) =
+                    rebuild_sessions_submenu(&submenu_listen, &list, &handle_for_listen)
+                {
+                    eprintln!("[claude-voice] sessions submenu rebuild failed: {e}");
+                }
+            });
 
             let icon = app
                 .default_window_icon()
@@ -313,6 +394,31 @@ pub fn run() {
                         let _ = refs.pin_popup.set_checked(cfg.pin_popup);
                         let _ = app.emit("settings:changed", cfg);
                     }
+                    other if other.starts_with("session_enable_") => {
+                        let id = &other["session_enable_".len()..];
+                        let sessions = app.state::<Arc<SessionsStore>>();
+                        let current = sessions
+                            .list()
+                            .iter()
+                            .find(|s| s.session_id == id)
+                            .map(|s| s.enabled)
+                            .unwrap_or(true);
+                        sessions.set_enabled(id, !current);
+                        let _ = app.emit("sessions:changed", ());
+                    }
+                    other if other.starts_with("session_settings_") => {
+                        let id = other["session_settings_".len()..].to_string();
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                        }
+                        if let Some(win) = app.get_webview_window("settings") {
+                            let _ = win.unminimize();
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                        let _ = app.emit("session:focus", id);
+                    }
                     "open_settings" => {
                         #[cfg(target_os = "macos")]
                         {
@@ -338,6 +444,12 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            let state_for_server = AppState {
+                tts: tts.clone(),
+                settings: settings_store.clone(),
+                sessions: sessions_store.clone(),
+                app: handle.clone(),
+            };
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = server::serve(state_for_server, port).await {
                     eprintln!("[claude-voice] server error: {e}");
@@ -362,6 +474,55 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn rebuild_sessions_submenu(
+    submenu: &Submenu<tauri::Wry>,
+    sessions: &[SessionInfo],
+    handle: &tauri::AppHandle,
+) -> tauri::Result<()> {
+    let existing = submenu.items()?;
+    for item in existing {
+        use tauri::menu::MenuItemKind::*;
+        match &item {
+            MenuItem(i) => submenu.remove(i)?,
+            Check(i) => submenu.remove(i)?,
+            Submenu(i) => submenu.remove(i)?,
+            Predefined(i) => submenu.remove(i)?,
+            Icon(i) => submenu.remove(i)?,
+        }
+    }
+    if sessions.is_empty() {
+        let placeholder = MenuItem::with_id(
+            handle,
+            "sessions_none",
+            "(no active sessions)",
+            false,
+            None::<&str>,
+        )?;
+        submenu.append(&placeholder)?;
+        return Ok(());
+    }
+    for s in sessions {
+        let enable_id = format!("session_enable_{}", s.session_id);
+        let settings_id = format!("session_settings_{}", s.session_id);
+        let enable_item = CheckMenuItem::with_id(
+            handle,
+            &enable_id,
+            "Enabled",
+            true,
+            s.enabled,
+            None::<&str>,
+        )?;
+        let settings_item =
+            MenuItem::with_id(handle, &settings_id, "Settings…", true, None::<&str>)?;
+        let session_sub = Submenu::with_items(handle, &s.label, true, &[
+            &enable_item,
+            &settings_item,
+        ])?;
+        submenu.append(&session_sub)?;
+    }
+    Ok(())
 }
 
 fn position_popup(popup: &tauri::WebviewWindow) {

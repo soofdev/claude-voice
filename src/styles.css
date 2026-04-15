@@ -150,6 +150,131 @@ button:hover {
   margin: 0;
 }
 
+.sessions {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #fafafa;
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+}
+
+.session.muted {
+  opacity: 0.55;
+}
+
+.session.highlight {
+  box-shadow: 0 0 0 2px #2f6feb;
+  transition: box-shadow 200ms ease;
+}
+
+.session .info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session .label-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.session .label {
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
+.session .label:hover,
+.session .label:focus {
+  background: rgba(0, 0, 0, 0.05);
+  outline: none;
+}
+
+.session .meta {
+  font-size: 11px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session .toggle {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  min-width: 60px;
+}
+
+.session .toggle.on {
+  background: #2a8f3c;
+  color: #fff;
+  border-color: #2a8f3c;
+}
+
+.session .toggle.off {
+  background: #fff;
+  color: #666;
+}
+
+.session-voice {
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  width: 100%;
+  max-width: 240px;
+}
+
+.session .remove {
+  font-size: 11px;
+  color: #a33;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.session .remove:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+  .session {
+    background: #2b2b2b;
+    border-color: #3a3a3a;
+  }
+  .session .meta {
+    color: #aaa;
+  }
+  .session .toggle.off {
+    background: #2b2b2b;
+    color: #bbb;
+  }
+  .session .label:hover,
+  .session .label:focus {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f0f0f0;

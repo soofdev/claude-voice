@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::history::now_ms;
+use crate::sessions::SessionsStore;
 use crate::settings::SettingsStore;
 use crate::transcript::last_assistant_text;
 use crate::tts::TtsEngine;
@@ -17,6 +19,8 @@ use crate::tts::TtsEngine;
 pub struct AppState {
     pub tts: Arc<TtsEngine>,
     pub settings: Arc<SettingsStore>,
+    pub sessions: Arc<SessionsStore>,
+    pub app: tauri::AppHandle,
 }
 
 #[derive(Deserialize)]
@@ -31,6 +35,10 @@ struct StopHookInput {
     stop_hook_active: bool,
     #[serde(default)]
     last_assistant_message: Option<String>,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    cwd: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -112,6 +120,26 @@ async fn hook_stop(
     let cfg = s.settings.get();
     if !cfg.enabled {
         return (StatusCode::OK, "disabled");
+    }
+
+    let mut cfg = cfg;
+    if let Some(sid) = input.session_id.as_deref() {
+        let cwd = input.cwd.as_deref().unwrap_or("");
+        s.sessions.upsert_active(sid, cwd, now_ms());
+        use tauri::Emitter;
+        let _ = s.app.emit("sessions:changed", ());
+        if !s.sessions.is_enabled(sid) {
+            return (StatusCode::OK, "session-muted");
+        }
+        if let Some(info) = s.sessions.get(sid) {
+            if let Some(voice) = info.voice_override {
+                if cfg.backend == "elevenlabs" {
+                    cfg.elevenlabs_voice_id = voice;
+                } else {
+                    cfg.voice = voice;
+                }
+            }
+        }
     }
 
     let raw = if let Some(msg) = input.last_assistant_message.filter(|m| !m.trim().is_empty()) {

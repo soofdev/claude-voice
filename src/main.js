@@ -14,6 +14,148 @@ event.listen("settings:changed", (e) => {
   if (e.payload) currentSettings = e.payload;
 });
 
+event.listen("sessions:changed", () => loadSessions());
+
+event.listen("session:focus", async (e) => {
+  await loadSessions();
+  const id = e.payload;
+  const list = el("sessions-list");
+  if (!list) return;
+  const target = Array.from(list.children).find(
+    (li) => li.dataset.sessionId === id,
+  );
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("highlight");
+    setTimeout(() => target.classList.remove("highlight"), 1800);
+  }
+});
+
+function formatAgo(ms) {
+  const d = Date.now() - Number(ms);
+  const min = Math.floor(d / 60000);
+  if (min < 1) return "active now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function renderSession(s) {
+  const li = document.createElement("li");
+  li.className = "session" + (s.enabled ? "" : " muted");
+  li.dataset.sessionId = s.session_id;
+
+  const info = document.createElement("div");
+  info.className = "info";
+
+  const labelRow = document.createElement("div");
+  labelRow.className = "label-row";
+  const label = document.createElement("input");
+  label.className = "label";
+  label.value = s.label;
+  label.title = "Click to rename";
+  label.addEventListener("change", async () => {
+    const next = label.value.trim() || s.label;
+    try {
+      await invoke("rename_session", { id: s.session_id, label: next });
+    } catch (e) {
+      console.error("rename_session failed", e);
+    }
+  });
+  labelRow.appendChild(label);
+
+  const voice = document.createElement("select");
+  voice.className = "session-voice";
+  voice.title = "Voice for this session";
+  const defOpt = document.createElement("option");
+  defOpt.value = "";
+  defOpt.textContent = "Default voice";
+  voice.appendChild(defOpt);
+  const seen = new Set();
+  for (const v of [...elevenVoices, ...PRESET_ELEVEN_VOICES]) {
+    if (!v || !v.id || seen.has(v.id)) continue;
+    seen.add(v.id);
+    const o = document.createElement("option");
+    o.value = v.id;
+    o.textContent = v.name ? `${v.name} (${v.id.slice(0, 6)}…)` : v.id;
+    voice.appendChild(o);
+  }
+  voice.value = s.voice_override || "";
+  voice.addEventListener("change", async () => {
+    try {
+      await invoke("set_session_voice", {
+        id: s.session_id,
+        voiceId: voice.value || null,
+      });
+    } catch (e) {
+      console.error("set_session_voice failed", e);
+    }
+  });
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const cwdBit = s.cwd ? `${s.cwd} · ` : "";
+  meta.textContent = `${cwdBit}${formatAgo(s.last_seen_ms)}`;
+
+  info.appendChild(labelRow);
+  info.appendChild(voice);
+  info.appendChild(meta);
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "toggle " + (s.enabled ? "on" : "off");
+  toggle.textContent = s.enabled ? "On" : "Off";
+  toggle.addEventListener("click", async () => {
+    try {
+      await invoke("set_session_enabled", {
+        id: s.session_id,
+        enabled: !s.enabled,
+      });
+    } catch (e) {
+      console.error("set_session_enabled failed", e);
+    }
+  });
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "remove";
+  remove.textContent = "Remove";
+  remove.title = "Forget this session";
+  remove.addEventListener("click", async () => {
+    try {
+      await invoke("remove_session", { id: s.session_id });
+    } catch (e) {
+      console.error("remove_session failed", e);
+    }
+  });
+
+  li.appendChild(info);
+  li.appendChild(toggle);
+  li.appendChild(remove);
+  return li;
+}
+
+async function loadSessions() {
+  try {
+    const list = el("sessions-list");
+    const empty = el("sessions-empty");
+    const sessions = await invoke("get_sessions");
+    list.innerHTML = "";
+    if (!sessions || sessions.length === 0) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const s of sessions) {
+      list.appendChild(renderSession(s));
+    }
+  } catch (e) {
+    console.error("get_sessions failed", e);
+  }
+}
+
 const el = (id) => document.getElementById(id);
 
 let elevenVoices = [];
@@ -183,6 +325,7 @@ async function refreshElevenVoices() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   await loadSettings();
+  await loadSessions();
 
   el("backend").addEventListener("change", updateBackendVisibility);
   el("rate").addEventListener("input", (e) => {
