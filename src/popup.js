@@ -348,6 +348,95 @@ replyInput.addEventListener("keydown", (e) => {
     replyInput.blur();
   }
 });
+
+const micBtn = document.getElementById("reply-mic");
+let mediaRecorder = null;
+let recordedChunks = [];
+let recording = false;
+let activeStream = null;
+
+async function toggleRecord() {
+  if (recording) {
+    try { mediaRecorder?.stop(); } catch {}
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    setReplyStatus(`Mic error: ${e.message || e}`, "err");
+    return;
+  }
+  activeStream = stream;
+  const mime = pickMime();
+  if (!mime) {
+    setReplyStatus("No supported audio recorder format", "err");
+    stream.getTracks().forEach((t) => t.stop());
+    return;
+  }
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.onstop = async () => {
+    try {
+      activeStream?.getTracks().forEach((t) => t.stop());
+    } catch {}
+    activeStream = null;
+    recording = false;
+    micBtn.classList.remove("recording");
+    micBtn.classList.add("uploading");
+    setReplyStatus("Transcribing…");
+    const blob = new Blob(recordedChunks, { type: mime });
+    if (blob.size < 800) {
+      micBtn.classList.remove("uploading");
+      setReplyStatus("Recording too short", "err");
+      return;
+    }
+    try {
+      const buf = await blob.arrayBuffer();
+      const text = await core.invoke("transcribe_audio", {
+        audio: Array.from(new Uint8Array(buf)),
+        mime,
+      });
+      if (text) {
+        const sep = replyInput.value && !replyInput.value.endsWith(" ") ? " " : "";
+        replyInput.value = replyInput.value + sep + text;
+        replyInput.dispatchEvent(new Event("input"));
+        await popupWindow.setFocus().catch(() => {});
+        replyInput.focus();
+        setReplyStatus("Transcribed", "ok");
+      } else {
+        setReplyStatus("No speech detected", "err");
+      }
+    } catch (e) {
+      setReplyStatus(String(e), "err");
+    } finally {
+      micBtn.classList.remove("uploading");
+    }
+  };
+  mediaRecorder.start();
+  recording = true;
+  micBtn.classList.add("recording");
+  setReplyStatus("Recording… click mic to stop");
+}
+
+function pickMime() {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+  ];
+  for (const m of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return null;
+}
+
+micBtn.addEventListener("click", toggleRecord);
 historyClear.addEventListener("click", async () => {
   try {
     await core.invoke("clear_history");

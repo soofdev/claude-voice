@@ -193,6 +193,58 @@ fn clear_history(
 }
 
 #[tauri::command]
+async fn transcribe_audio(
+    audio: Vec<u8>,
+    mime: String,
+    settings: tauri::State<'_, Arc<SettingsStore>>,
+    tts: tauri::State<'_, Arc<tts::TtsEngine>>,
+) -> Result<String, String> {
+    let cfg = settings.get();
+    if cfg.elevenlabs_api_key.is_empty() {
+        return Err("ElevenLabs API key not set".to_string());
+    }
+    if audio.is_empty() {
+        return Err("empty audio".to_string());
+    }
+    let http = tts.http();
+    let ext = match mime.as_str() {
+        m if m.contains("webm") => "webm",
+        m if m.contains("mp4") || m.contains("m4a") => "m4a",
+        m if m.contains("ogg") => "ogg",
+        m if m.contains("wav") => "wav",
+        m if m.contains("mpeg") || m.contains("mp3") => "mp3",
+        _ => "webm",
+    };
+    let part = reqwest::multipart::Part::bytes(audio)
+        .file_name(format!("recording.{ext}"))
+        .mime_str(&mime)
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::multipart::Form::new()
+        .text("model_id", "scribe_v1")
+        .part("file", part);
+    let resp = http
+        .post("https://api.elevenlabs.io/v1/speech-to-text")
+        .header("xi-api-key", &cfg.elevenlabs_api_key)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let err = resp.text().await.unwrap_or_default();
+        return Err(format!("ElevenLabs STT {status}: {err}"));
+    }
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let text = v
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Ok(text)
+}
+
+#[tauri::command]
 fn send_to_terminal(text: String) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("empty prompt".to_string());
@@ -321,6 +373,7 @@ pub fn run() {
             replay_history,
             clear_history,
             send_to_terminal,
+            transcribe_audio,
             get_sessions,
             set_session_enabled,
             rename_session,
