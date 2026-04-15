@@ -1,3 +1,4 @@
+mod link_extract;
 mod server;
 mod settings;
 mod text_clean;

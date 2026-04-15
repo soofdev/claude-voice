@@ -9,6 +9,9 @@ const stopBtn = document.getElementById("stop-btn");
 const pinBtn = document.getElementById("pin-btn");
 const pauseIcon = document.getElementById("pause-icon");
 const playIcon = document.getElementById("play-icon");
+const linksEl = document.getElementById("links");
+
+const MAX_CHIPS = 5;
 
 let paused = false;
 let pinned = false;
@@ -39,6 +42,37 @@ function setPinned(p) {
   pinned = p;
   pinBtn.classList.toggle("active", p);
   pinBtn.title = p ? "Unpin popup" : "Pin popup";
+}
+
+function renderLinks(list) {
+  linksEl.innerHTML = "";
+  if (!list || list.length === 0) {
+    linksEl.hidden = true;
+    return;
+  }
+  linksEl.hidden = false;
+  const shown = list.slice(0, MAX_CHIPS);
+  for (const l of shown) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "link-chip";
+    chip.title = l.url;
+    chip.textContent = l.label || l.url;
+    chip.addEventListener("click", async () => {
+      try {
+        await core.invoke("plugin:opener|open_url", { url: l.url });
+      } catch (e) {
+        console.error("open_url failed", e);
+      }
+    });
+    linksEl.appendChild(chip);
+  }
+  if (list.length > MAX_CHIPS) {
+    const more = document.createElement("span");
+    more.className = "link-more";
+    more.textContent = `+${list.length - MAX_CHIPS} more`;
+    linksEl.appendChild(more);
+  }
 }
 
 function renderWords(text, list) {
@@ -120,11 +154,13 @@ function startHighlight(text, list) {
 event.listen("voice:start", (e) => {
   const text = e.payload?.text ?? "";
   const list = e.payload?.words ?? [];
+  const links = e.payload?.links ?? [];
   errorShowing = false;
   textEl.style.color = "";
   titleEl.textContent = "Claude speaking";
   setPaused(false);
   startHighlight(text, list);
+  renderLinks(links);
 });
 
 event.listen("voice:end", async () => {
@@ -137,6 +173,7 @@ event.listen("voice:end", async () => {
   textEl.textContent = "";
   wordSpans = [];
   words = [];
+  renderLinks([]);
   setPaused(false);
   try { await popupWindow.hide(); } catch {}
 });

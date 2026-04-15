@@ -139,3 +139,46 @@ body {
   background: rgba(255, 210, 90, 0.28);
   color: #ffd86a;
 }
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(100, 150, 255, 0.15);
+  border: 1px solid rgba(120, 170, 255, 0.3);
+  color: #cfe0ff;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 120ms ease;
+}
+
+.link-chip:hover {
+  background: rgba(120, 170, 255, 0.28);
+  border-color: rgba(150, 190, 255, 0.5);
+}
+
+.link-chip::before {
+  content: "↗";
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.link-more {
+  font-size: 11px;
+  color: #8b8b90;
+  align-self: center;
+}

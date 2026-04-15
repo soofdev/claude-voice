@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter};
 use tauri::async_runtime::JoinHandle;
 use tokio::process::Command;
 
+use crate::link_extract::{self, Link};
 use crate::settings::Settings;
 use crate::text_clean::clean_for_speech;
 
@@ -20,6 +21,7 @@ struct Word {
 struct StartPayload {
     text: String,
     words: Vec<Word>,
+    links: Vec<Link>,
 }
 
 #[derive(Serialize, Clone)]
@@ -142,7 +144,9 @@ async fn run_pipeline(
     original: String,
     cfg: Settings,
 ) {
-    let cleaned = clean_for_speech(&original);
+    let extracted = link_extract::extract(&original);
+    let links = extracted.links;
+    let cleaned = clean_for_speech(&extracted.text);
     if cleaned.trim().is_empty() {
         return;
     }
@@ -189,6 +193,7 @@ async fn run_pipeline(
             StartPayload {
                 text: spoken.clone(),
                 words: words.clone(),
+                links: links.clone(),
             },
         );
     }
