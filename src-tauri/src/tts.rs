@@ -100,9 +100,14 @@ impl TtsEngine {
         }
         let pid_opt = self.inner.current_pid.lock().unwrap().take();
         if let Some(pid) = pid_opt {
+            #[cfg(unix)]
             unsafe {
                 libc::kill(pid as i32, libc::SIGCONT);
                 libc::kill(pid as i32, libc::SIGTERM);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = pid;
             }
             *self.inner.paused.lock().unwrap() = false;
             if let Some(app) = self.app.get() {
@@ -114,8 +119,15 @@ impl TtsEngine {
     pub fn pause(&self) {
         let pid = *self.inner.current_pid.lock().unwrap();
         if let Some(pid) = pid {
+            #[cfg(unix)]
             unsafe {
                 libc::kill(pid as i32, libc::SIGSTOP);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = pid;
+                eprintln!("[claude-voice] pause not supported on this platform");
+                return;
             }
             *self.inner.paused.lock().unwrap() = true;
             if let Some(app) = self.app.get() {
@@ -127,8 +139,14 @@ impl TtsEngine {
     pub fn resume(&self) {
         let pid = *self.inner.current_pid.lock().unwrap();
         if let Some(pid) = pid {
+            #[cfg(unix)]
             unsafe {
                 libc::kill(pid as i32, libc::SIGCONT);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = pid;
+                return;
             }
             *self.inner.paused.lock().unwrap() = false;
             if let Some(app) = self.app.get() {
