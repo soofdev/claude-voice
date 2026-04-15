@@ -17,6 +17,8 @@ pub struct Settings {
     pub speak_session_prefix: bool,
     #[serde(default = "default_prefix_skip_window")]
     pub prefix_skip_window_ms: u32,
+    #[serde(default = "default_orb_style")]
+    pub orb_style: String,
 
     #[serde(default = "default_backend")]
     pub backend: String,
@@ -83,6 +85,9 @@ fn default_dismiss_delay() -> u32 {
 fn default_prefix_skip_window() -> u32 {
     30000
 }
+fn default_orb_style() -> String {
+    "glass".into()
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -94,6 +99,7 @@ impl Default for Settings {
             popup_dismiss_delay_ms: default_dismiss_delay(),
             speak_session_prefix: true,
             prefix_skip_window_ms: default_prefix_skip_window(),
+            orb_style: default_orb_style(),
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),

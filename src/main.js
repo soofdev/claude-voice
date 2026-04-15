@@ -222,6 +222,7 @@ async function loadSettings() {
   el("prefix-skip-value").textContent = Math.round(
     (settings.prefix_skip_window_ms ?? 30000) / 1000,
   );
+  el("orb-style").value = settings.orb_style || "glass";
   el("backend").value = settings.backend;
 
   const voiceSel = el("voice");
@@ -287,6 +288,7 @@ function collect() {
     popup_dismiss_delay_ms: parseInt(el("dismiss-delay").value, 10),
     speak_session_prefix: el("speak-prefix").checked,
     prefix_skip_window_ms: parseInt(el("prefix-skip").value, 10),
+    orb_style: el("orb-style").value || "glass",
     backend: el("backend").value,
     voice: el("voice").value || "Samantha",
     rate: parseInt(el("rate").value, 10),

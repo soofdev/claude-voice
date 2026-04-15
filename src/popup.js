@@ -574,6 +574,9 @@ function applySettings(cfg) {
   if (typeof cfg.popup_dismiss_delay_ms === "number") {
     dismissDelayMs = cfg.popup_dismiss_delay_ms;
   }
+  if (typeof cfg.orb_style === "string") {
+    document.body.dataset.orbStyle = cfg.orb_style;
+  }
 }
 
 (async () => {
