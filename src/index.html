@@ -11,41 +11,107 @@
     <main class="container">
       <h1>Claude Voice</h1>
 
-      <section class="field">
+      <section class="group">
         <label class="row">
           <input type="checkbox" id="enabled" />
           <span>Speaking enabled</span>
         </label>
+        <label class="row">
+          <input type="checkbox" id="show-popup" />
+          <span>Show popup while speaking</span>
+        </label>
       </section>
 
-      <section class="field">
-        <label for="voice">Voice</label>
-        <select id="voice"></select>
+      <section class="group">
+        <h2>Voice backend</h2>
+        <div class="field">
+          <label for="backend">Engine</label>
+          <select id="backend">
+            <option value="say">macOS say (free, built-in)</option>
+            <option value="elevenlabs">ElevenLabs (AI voice)</option>
+          </select>
+        </div>
+
+        <div id="say-settings">
+          <div class="field">
+            <label for="voice">System voice</label>
+            <select id="voice"></select>
+          </div>
+          <div class="field">
+            <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
+            <input type="range" id="rate" min="120" max="320" step="5" />
+          </div>
+        </div>
+
+        <div id="eleven-settings" hidden>
+          <div class="field">
+            <label for="eleven-key">ElevenLabs API key</label>
+            <input type="password" id="eleven-key" placeholder="xi-..." />
+          </div>
+          <div class="field">
+            <label for="eleven-voice">Voice</label>
+            <div class="row">
+              <select id="eleven-voice" style="flex:1"></select>
+              <button id="refresh-voices" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="eleven-model">Model</label>
+            <select id="eleven-model">
+              <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option>
+              <option value="eleven_turbo_v2_5">Turbo v2.5</option>
+              <option value="eleven_multilingual_v2">Multilingual v2 (quality)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="eleven-speed">
+              Speed: <span id="eleven-speed-value">0.9</span>×
+            </label>
+            <input type="range" id="eleven-speed" min="0.7" max="1.2" step="0.05" />
+          </div>
+        </div>
       </section>
 
-      <section class="field">
-        <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
-        <input type="range" id="rate" min="120" max="320" step="5" />
+      <section class="group">
+        <h2>Summarize with Claude Haiku</h2>
+        <label class="row">
+          <input type="checkbox" id="summarize" />
+          <span>Rephrase long messages before speaking</span>
+        </label>
+        <div class="field">
+          <label for="anthropic-key">Anthropic API key</label>
+          <input type="password" id="anthropic-key" placeholder="sk-ant-..." />
+        </div>
+        <div class="field">
+          <label for="summary-model">Model</label>
+          <input type="text" id="summary-model" />
+        </div>
+        <div class="field">
+          <label for="summary-threshold">
+            Summarize when longer than
+            <span id="threshold-value">180</span> chars
+          </label>
+          <input type="range" id="summary-threshold" min="0" max="1000" step="20" />
+        </div>
       </section>
 
-      <section class="field">
-        <label for="port">HTTP port</label>
-        <input type="number" id="port" min="1024" max="65535" />
-      </section>
-
-      <section class="field row">
+      <section class="group actions">
         <button id="test">Test voice</button>
-        <button id="stop">Stop speaking</button>
-        <button id="save">Save</button>
+        <button id="stop">Stop</button>
+        <button id="save" class="primary">Save</button>
       </section>
 
-      <section class="field">
-        <label>Claude Code hook command</label>
+      <section class="group">
+        <h2>Claude Code hook</h2>
+        <div class="field">
+          <label for="port">HTTP port</label>
+          <input type="number" id="port" min="1024" max="65535" />
+        </div>
         <code id="hook-cmd" class="hook"></code>
-        <button id="copy-hook">Copy</button>
-        <p class="hint">
-          Add this as a <b>Stop</b> hook in <code>~/.claude/settings.json</code>.
-        </p>
+        <div class="row">
+          <button id="copy-hook" type="button">Copy</button>
+          <span class="hint">Add as a Stop hook in ~/.claude/settings.json</span>
+        </div>
       </section>
 
       <p id="status" class="status"></p>

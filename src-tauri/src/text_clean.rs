@@ -18,36 +18,44 @@ pub fn clean_for_speech(text: &str) -> String {
 
 fn strip_inline(line: &str) -> String {
     let mut s = String::with_capacity(line.len());
-    let bytes = line.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let c = bytes[i] as char;
+    let mut chars = line.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
         match c {
             '`' => {
-                if let Some(end) = line[i + 1..].find('`') {
-                    s.push_str(&line[i + 1..i + 1 + end]);
-                    i += end + 2;
+                if let Some(end_rel) = line[i + 1..].find('`') {
+                    let end = i + 1 + end_rel;
+                    s.push_str(&line[i + 1..end]);
+                    while let Some(&(j, _)) = chars.peek() {
+                        if j > end {
+                            break;
+                        }
+                        chars.next();
+                    }
                     continue;
                 }
+                s.push(c);
             }
             '[' => {
-                if let Some(close) = line[i + 1..].find("](") {
-                    let label = &line[i + 1..i + 1 + close];
-                    if let Some(end) = line[i + close + 3..].find(')') {
-                        s.push_str(label);
-                        i += close + 3 + end + 1;
+                if let Some(close_rel) = line[i + 1..].find("](") {
+                    let label_end = i + 1 + close_rel;
+                    let paren_start = label_end + 2;
+                    if let Some(end_rel) = line[paren_start..].find(')') {
+                        let end = paren_start + end_rel;
+                        s.push_str(&line[i + 1..label_end]);
+                        while let Some(&(j, _)) = chars.peek() {
+                            if j > end {
+                                break;
+                            }
+                            chars.next();
+                        }
                         continue;
                     }
                 }
+                s.push(c);
             }
-            '*' | '_' | '#' | '>' | '~' => {
-                i += 1;
-                continue;
-            }
-            _ => {}
+            '*' | '_' | '#' | '>' | '~' => {}
+            _ => s.push(c),
         }
-        s.push(c);
-        i += 1;
     }
     s
 }

@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::settings::SettingsStore;
-use crate::text_clean::clean_for_speech;
 use crate::transcript::last_assistant_text;
 use crate::tts::TtsEngine;
 
@@ -38,6 +37,7 @@ struct StopHookInput {
 struct StatusResponse {
     enabled: bool,
     speaking: bool,
+    paused: bool,
     voice: String,
     rate: u32,
 }
@@ -48,6 +48,9 @@ pub fn router(state: AppState) -> Router {
         .route("/status", get(status))
         .route("/speak", post(speak))
         .route("/stop", post(stop))
+        .route("/pause", post(pause))
+        .route("/resume", post(resume))
+        .route("/toggle", post(toggle))
         .route("/hook/stop", post(hook_stop))
         .with_state(state)
 }
@@ -61,6 +64,7 @@ async fn status(State(s): State<AppState>) -> Json<StatusResponse> {
     Json(StatusResponse {
         enabled: cfg.enabled,
         speaking: s.tts.is_speaking(),
+        paused: s.tts.is_paused(),
         voice: cfg.voice,
         rate: cfg.rate,
     })
@@ -74,14 +78,28 @@ async fn speak(
     if !cfg.enabled {
         return (StatusCode::OK, "disabled");
     }
-    let text = clean_for_speech(&req.text);
-    s.tts.speak(&text, &cfg.voice, cfg.rate);
+    s.tts.speak(req.text, cfg);
     (StatusCode::OK, "ok")
 }
 
 async fn stop(State(s): State<AppState>) -> impl IntoResponse {
     s.tts.stop();
     (StatusCode::OK, "stopped")
+}
+
+async fn pause(State(s): State<AppState>) -> impl IntoResponse {
+    s.tts.pause();
+    (StatusCode::OK, "paused")
+}
+
+async fn resume(State(s): State<AppState>) -> impl IntoResponse {
+    s.tts.resume();
+    (StatusCode::OK, "resumed")
+}
+
+async fn toggle(State(s): State<AppState>) -> impl IntoResponse {
+    s.tts.toggle_pause();
+    (StatusCode::OK, "ok")
 }
 
 async fn hook_stop(
@@ -107,8 +125,7 @@ async fn hook_stop(
         return (StatusCode::OK, "no-input");
     };
 
-    let text = clean_for_speech(&raw);
-    s.tts.speak(&text, &cfg.voice, cfg.rate);
+    s.tts.speak(raw, cfg);
     (StatusCode::OK, "ok")
 }
 

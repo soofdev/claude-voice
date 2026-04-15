@@ -11,9 +11,14 @@ use settings::{Settings, SettingsStore};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
-    Manager, WebviewUrl, WebviewWindowBuilder,
+    LogicalPosition, LogicalSize, Listener, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tts::TtsEngine;
+
+const POPUP_WIDTH: f64 = 380.0;
+const POPUP_HEIGHT: f64 = 180.0;
+const POPUP_MARGIN_RIGHT: f64 = 12.0;
+const POPUP_MARGIN_TOP: f64 = 32.0;
 
 struct MenuRefs {
     enabled: CheckMenuItem<tauri::Wry>,
@@ -47,13 +52,28 @@ fn test_speak(
     store: tauri::State<Arc<SettingsStore>>,
 ) {
     let cfg = store.get();
-    let cleaned = text_clean::clean_for_speech(&text);
-    tts.speak(&cleaned, &cfg.voice, cfg.rate);
+    tts.speak(text, cfg);
+}
+
+#[tauri::command]
+async fn list_elevenlabs_voices(
+    api_key: String,
+    tts: tauri::State<'_, Arc<TtsEngine>>,
+) -> Result<Vec<(String, String)>, String> {
+    let http = tts.http();
+    tts::list_elevenlabs_voices(&http, &api_key)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn stop_speaking(tts: tauri::State<Arc<TtsEngine>>) {
     tts.stop();
+}
+
+#[tauri::command]
+fn toggle_pause(tts: tauri::State<Arc<TtsEngine>>) {
+    tts.toggle_pause();
 }
 
 #[tauri::command]
@@ -85,8 +105,10 @@ pub fn run() {
             get_settings,
             set_settings,
             list_voices,
+            list_elevenlabs_voices,
             test_speak,
             stop_speaking,
+            toggle_pause,
             hook_command,
         ])
         .setup(move |app| {
@@ -95,12 +117,70 @@ pub fn run() {
 
             let handle = app.handle().clone();
 
+            let tts_state = app.state::<Arc<TtsEngine>>();
+            tts_state.set_app_handle(handle.clone());
+
+            let popup = WebviewWindowBuilder::new(
+                app,
+                "popup",
+                WebviewUrl::App("popup.html".into()),
+            )
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .resizable(false)
+            .focused(false)
+            .skip_taskbar(true)
+            .visible(false)
+            .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
+            .shadow(false)
+            .accept_first_mouse(true)
+            .build()?;
+
+            position_popup(&popup);
+            #[cfg(target_os = "macos")]
+            {
+                let _ = popup.set_visible_on_all_workspaces(true);
+            }
+
+            let popup_for_start = popup.clone();
+            let store_for_start = settings_store.clone();
+            handle.listen("voice:start", move |_| {
+                if !store_for_start.get().show_popup {
+                    return;
+                }
+                position_popup(&popup_for_start);
+                let _ = popup_for_start.show();
+            });
+
+            // popup owns its own hide logic (respects pin)
+
+            let settings_window = WebviewWindowBuilder::new(
+                app,
+                "settings",
+                WebviewUrl::App("index.html".into()),
+            )
+            .title("Claude Voice Settings")
+            .inner_size(480.0, 820.0)
+            .min_inner_size(440.0, 560.0)
+            .resizable(true)
+            .visible(false)
+            .build()?;
+            let _ = settings_window.hide();
+
             let enabled_item = CheckMenuItem::with_id(
                 &handle,
                 "toggle_enabled",
                 "Speaking Enabled",
                 true,
                 initial.enabled,
+                None::<&str>,
+            )?;
+            let pause_item = MenuItem::with_id(
+                &handle,
+                "toggle_pause",
+                "Pause / Resume",
+                true,
                 None::<&str>,
             )?;
             let stop_item =
@@ -113,6 +193,7 @@ pub fn run() {
                 &handle,
                 &[
                     &enabled_item,
+                    &pause_item,
                     &stop_item,
                     &PredefinedMenuItem::separator(&handle)?,
                     &settings_item,
@@ -154,20 +235,19 @@ pub fn run() {
                         let tts = app.state::<Arc<TtsEngine>>();
                         tts.stop();
                     }
+                    "toggle_pause" => {
+                        let tts = app.state::<Arc<TtsEngine>>();
+                        tts.toggle_pause();
+                    }
                     "open_settings" => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                        }
                         if let Some(win) = app.get_webview_window("settings") {
+                            let _ = win.unminimize();
                             let _ = win.show();
                             let _ = win.set_focus();
-                        } else {
-                            let _ = WebviewWindowBuilder::new(
-                                app,
-                                "settings",
-                                WebviewUrl::App("index.html".into()),
-                            )
-                            .title("Claude Voice Settings")
-                            .inner_size(460.0, 520.0)
-                            .resizable(false)
-                            .build();
                         }
                     }
                     "quit" => {
@@ -197,9 +277,28 @@ pub fn run() {
                 if win.label() == "settings" {
                     api.prevent_close();
                     let _ = win.hide();
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = win
+                            .app_handle()
+                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
                 }
             }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn position_popup(popup: &tauri::WebviewWindow) {
+    let monitor = match popup.primary_monitor() {
+        Ok(Some(m)) => m,
+        _ => return,
+    };
+    let scale = monitor.scale_factor();
+    let logical_w = monitor.size().width as f64 / scale;
+    let x = logical_w - POPUP_WIDTH - POPUP_MARGIN_RIGHT;
+    let y = POPUP_MARGIN_TOP;
+    let _ = popup.set_size(LogicalSize::new(POPUP_WIDTH, POPUP_HEIGHT));
+    let _ = popup.set_position(LogicalPosition::new(x, y));
 }

@@ -1,0 +1,141 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+.card {
+  margin: 8px;
+  height: calc(100% - 16px);
+  background: rgba(28, 28, 30, 0.92);
+  color: #f0f0f0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cfcfd2;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.title {
+  flex: 1;
+}
+
+.controls {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.controls button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e6e6e6;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.controls button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.controls button:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5a5f;
+  box-shadow: 0 0 0 0 rgba(255, 90, 95, 0.7);
+  animation: pulse 1.4s infinite;
+}
+
+.dot.paused {
+  background: #e6b23a;
+  animation: none;
+  box-shadow: none;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 90, 95, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 90, 95, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 90, 95, 0);
+  }
+}
+
+.text {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.text::-webkit-scrollbar {
+  width: 6px;
+}
+.text::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.word {
+  transition: color 80ms ease, background 80ms ease;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.word.past {
+  color: #9a9a9e;
+}
+
+.word.active {
+  background: rgba(255, 235, 140, 0.22);
+  color: #fff5c4;
+}
+
+#pin-btn.active {
+  background: rgba(255, 210, 90, 0.28);
+  color: #ffd86a;
+}

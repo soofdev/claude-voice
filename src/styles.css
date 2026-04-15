@@ -11,10 +11,56 @@ body {
 }
 
 .container {
-  padding: 18px 22px;
+  padding: 18px 22px 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 16px;
+  border: 1px solid #dcdcdc;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.group h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.group.actions {
+  flex-direction: row;
+  justify-content: flex-end;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+button.primary {
+  background: #2f6feb;
+  color: #fff;
+  border-color: #2f6feb;
+}
+button.primary:hover {
+  background: #1f5bd0;
+  border-color: #1f5bd0;
+}
+
+input[type="password"] {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  background: #fff;
+  color: inherit;
 }
 
 h1 {
@@ -100,11 +146,19 @@ button:hover {
   }
   input[type="text"],
   input[type="number"],
+  input[type="password"],
   select,
   button {
     background: #2b2b2b;
     color: #f0f0f0;
     border-color: #444;
+  }
+  .group {
+    background: #262626;
+    border-color: #3a3a3a;
+  }
+  .group h2 {
+    color: #aaa;
   }
   .hint {
     color: #aaa;
