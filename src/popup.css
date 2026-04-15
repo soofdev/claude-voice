@@ -296,6 +296,86 @@ body.fading-out .card {
   color: #ff8a8a;
 }
 
+.orb {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+body.minimized .orb {
+  display: flex;
+}
+
+body.minimized .card {
+  display: none;
+}
+
+.orb-core {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--session-color, rgba(120, 170, 255, 0.85));
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.35),
+    0 0 0 0 var(--session-color-glow, rgba(120, 170, 255, 0.4));
+  transition: box-shadow 300ms ease, transform 150ms ease;
+  cursor: grab;
+}
+
+.orb-core:active {
+  cursor: grabbing;
+}
+
+.orb:hover .orb-core {
+  transform: scale(1.06);
+}
+
+body.minimized.speaking .orb-core {
+  animation: orb-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes orb-pulse {
+  0%, 100% {
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.35),
+      0 0 0 0 var(--session-color-glow, rgba(120, 170, 255, 0.6));
+  }
+  50% {
+    box-shadow:
+      0 6px 22px rgba(0, 0, 0, 0.4),
+      0 0 0 12px transparent,
+      0 0 24px 2px var(--session-color-glow, rgba(120, 170, 255, 0.8));
+  }
+}
+
+.orb-label {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translate(-50%, 100%);
+  background: rgba(28, 28, 30, 0.92);
+  color: var(--session-color, #f0f0f0);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.orb:hover .orb-label {
+  opacity: 1;
+  transform: translate(-50%, calc(100% + 4px));
+}
+
 .links {
   display: flex;
   flex-wrap: wrap;

@@ -20,10 +20,18 @@ const historyList = document.getElementById("history-list");
 const historyEmpty = document.getElementById("history-empty");
 const historyClear = document.getElementById("history-clear");
 const originalBtn = document.getElementById("original-btn");
+const minimizeBtn = document.getElementById("minimize-btn");
+const orb = document.getElementById("orb");
+const orbCore = document.getElementById("orb-core");
+const orbLabel = document.getElementById("orb-label");
+
+const SIZE_ORB = { w: 88, h: 88 };
 
 const MAX_CHIPS = 5;
 let historyOpen = false;
 let showingOriginal = false;
+let minimized = false;
+let expandedSize = { ...SIZE_COLLAPSED };
 let currentSpokenText = "";
 let currentOriginalText = "";
 
@@ -229,6 +237,7 @@ function applySessionTheme(session) {
   }
   activeTitle = session && session.label ? session.label : "Claude speaking";
   titleEl.textContent = activeTitle;
+  orbLabel.textContent = session && session.label ? session.label : "Claude";
 }
 
 function hexToRgba(hex, a) {
@@ -243,6 +252,9 @@ event.listen("voice:end", async () => {
   if (errorShowing) return;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   document.body.classList.remove("speaking");
+  if (minimized) {
+    return;
+  }
   if (pinned) {
     titleEl.textContent = "Done (pinned)";
     return;
@@ -437,6 +449,39 @@ function pickMime() {
 }
 
 micBtn.addEventListener("click", toggleRecord);
+
+async function setMinimized(on) {
+  if (on === minimized) return;
+  minimized = on;
+  document.body.classList.toggle("minimized", on);
+  try {
+    if (on) {
+      const sz = await popupWindow.innerSize();
+      expandedSize = { w: sz.width, h: sz.height };
+      await popupWindow.setSize(new LogicalSize(SIZE_ORB.w, SIZE_ORB.h));
+    } else {
+      await popupWindow.setSize(
+        new LogicalSize(expandedSize.w || SIZE_COLLAPSED.w, expandedSize.h || SIZE_COLLAPSED.h),
+      );
+    }
+  } catch (e) {
+    console.error("setSize failed", e);
+  }
+}
+
+minimizeBtn.addEventListener("click", () => setMinimized(true));
+
+let orbPressedAt = 0;
+orbCore.addEventListener("mousedown", () => {
+  orbPressedAt = performance.now();
+});
+orbCore.addEventListener("mouseup", () => {
+  const elapsed = performance.now() - orbPressedAt;
+  if (elapsed > 0 && elapsed < 180) {
+    setMinimized(false);
+  }
+});
+orbCore.addEventListener("dblclick", () => setMinimized(false));
 historyClear.addEventListener("click", async () => {
   try {
     await core.invoke("clear_history");
@@ -558,5 +603,8 @@ document.addEventListener("keydown", (e) => {
   } else if (e.code === "KeyT") {
     e.preventDefault();
     setOriginalMode(!showingOriginal);
+  } else if (e.code === "KeyM") {
+    e.preventDefault();
+    setMinimized(!minimized);
   }
 });
