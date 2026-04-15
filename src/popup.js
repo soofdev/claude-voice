@@ -177,6 +177,21 @@ function startHighlight(text, list) {
   }
 }
 
+event.listen("voice:waking", (e) => {
+  const session = e.payload?.session ?? null;
+  errorShowing = false;
+  if (dismissTimer) {
+    clearTimeout(dismissTimer);
+    dismissTimer = null;
+  }
+  document.body.classList.remove("fading-out", "speaking");
+  document.body.classList.add("waking");
+  applySessionTheme(session);
+  if (!minimized) {
+    titleEl.textContent = (session && session.label ? session.label : "Claude") + " — preparing…";
+  }
+});
+
 event.listen("voice:start", (e) => {
   const text = e.payload?.text ?? "";
   const original = e.payload?.original ?? text;
@@ -188,7 +203,7 @@ event.listen("voice:start", (e) => {
     clearTimeout(dismissTimer);
     dismissTimer = null;
   }
-  document.body.classList.remove("fading-out");
+  document.body.classList.remove("fading-out", "waking");
   document.body.classList.add("speaking");
   textEl.style.color = "";
   applySessionTheme(session);
@@ -251,7 +266,7 @@ function hexToRgba(hex, a) {
 event.listen("voice:end", async () => {
   if (errorShowing) return;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-  document.body.classList.remove("speaking");
+  document.body.classList.remove("speaking", "waking");
   if (minimized) {
     return;
   }
@@ -282,7 +297,7 @@ event.listen("voice:resumed", () => setPaused(false));
 event.listen("voice:error", async (e) => {
   const msg = e.payload?.message ?? "Unknown error";
   errorShowing = true;
-  document.body.classList.remove("speaking");
+  document.body.classList.remove("speaking", "waking");
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   titleEl.textContent = "Error";
   textEl.textContent = msg;

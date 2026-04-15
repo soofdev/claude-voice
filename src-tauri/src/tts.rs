@@ -36,6 +36,11 @@ struct StartPayload {
 }
 
 #[derive(Serialize, Clone)]
+struct WakingPayload {
+    session: Option<SessionTag>,
+}
+
+#[derive(Serialize, Clone)]
 struct ErrorPayload {
     message: String,
 }
@@ -254,6 +259,15 @@ async fn run_pipeline(
     cfg: Settings,
     session: Option<SessionTag>,
 ) {
+    if let Some(app) = &app {
+        let _ = app.emit(
+            "voice:waking",
+            WakingPayload {
+                session: session.clone(),
+            },
+        );
+    }
+
     let extracted = link_extract::extract(&original);
     let links = extracted.links;
     let cleaned = clean_for_speech(&extracted.text);
@@ -333,6 +347,17 @@ async fn replay_pipeline(
         .as_deref()
         .map(std::path::PathBuf::from)
         .filter(|p| p.exists());
+
+    if cached_path.is_none() {
+        if let Some(app) = &app {
+            let _ = app.emit(
+                "voice:waking",
+                WakingPayload {
+                    session: entry.session.clone(),
+                },
+            );
+        }
+    }
 
     let (audio_path, words) = if let Some(p) = cached_path {
         (Some(p), entry.words.clone())

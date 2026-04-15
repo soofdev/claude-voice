@@ -41,6 +41,28 @@ body.speaking .card {
   animation: card-glow 1.8s ease-in-out infinite;
 }
 
+body.waking .card {
+  border-color: color-mix(
+    in srgb,
+    var(--session-color, rgba(255, 255, 255, 0.25)) 50%,
+    transparent
+  );
+  animation: card-waking 2.2s ease-in-out infinite;
+}
+
+@keyframes card-waking {
+  0%, 100% {
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.35),
+      0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.35),
+      0 0 16px 1px var(--session-color-glow, rgba(120, 170, 255, 0.45));
+  }
+}
+
 @keyframes card-glow {
   0%, 100% {
     box-shadow:
@@ -486,6 +508,24 @@ body.minimized.speaking .orb {
 @keyframes orb-bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
+}
+
+body.minimized.waking .orb {
+  animation: orb-waking 2.2s ease-in-out infinite;
+}
+
+@keyframes orb-waking {
+  0%, 100% { transform: scale(0.94); }
+  50% { transform: scale(1.04); }
+}
+
+body.minimized.waking .orb::before {
+  animation: orb-halo-wake 2.2s ease-in-out infinite;
+}
+
+@keyframes orb-halo-wake {
+  0%, 100% { box-shadow: 0 0 4px 0 var(--session-color-glow, rgba(120, 170, 255, 0.2)); }
+  50% { box-shadow: 0 0 22px 4px var(--session-color-glow, rgba(120, 170, 255, 0.6)); }
 }
 
 /* ── Backdrop-filter ripple rings ── */

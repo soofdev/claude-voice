@@ -424,6 +424,15 @@ pub fn run() {
                 let _ = popup_for_start.show();
             });
 
+            let popup_for_wake = popup.clone();
+            let store_for_wake = settings_store.clone();
+            handle.listen("voice:waking", move |_| {
+                if !store_for_wake.get().show_popup {
+                    return;
+                }
+                let _ = popup_for_wake.show();
+            });
+
             // popup owns its own hide logic (respects pin)
 
             let settings_window = WebviewWindowBuilder::new(
