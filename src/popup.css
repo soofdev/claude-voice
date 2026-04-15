@@ -30,6 +30,14 @@ body {
   flex-direction: column;
   gap: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 350ms ease, transform 350ms ease;
+}
+
+body.fading-out .card {
+  opacity: 0;
+  transform: scale(0.96);
 }
 
 .header {

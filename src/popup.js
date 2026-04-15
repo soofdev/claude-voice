@@ -25,6 +25,8 @@ let historyOpen = false;
 
 let paused = false;
 let pinned = false;
+let dismissDelayMs = 1500;
+let dismissTimer = null;
 let errorShowing = false;
 let rafId = null;
 let wordSpans = [];
@@ -166,6 +168,11 @@ event.listen("voice:start", (e) => {
   const list = e.payload?.words ?? [];
   const links = e.payload?.links ?? [];
   errorShowing = false;
+  if (dismissTimer) {
+    clearTimeout(dismissTimer);
+    dismissTimer = null;
+  }
+  document.body.classList.remove("fading-out");
   textEl.style.color = "";
   titleEl.textContent = "Claude speaking";
   setPaused(false);
@@ -180,12 +187,21 @@ event.listen("voice:end", async () => {
     titleEl.textContent = "Done (pinned)";
     return;
   }
-  textEl.textContent = "";
-  wordSpans = [];
-  words = [];
-  renderLinks([]);
-  setPaused(false);
-  try { await popupWindow.hide(); } catch {}
+  if (dismissTimer) clearTimeout(dismissTimer);
+  const FADE_MS = 350;
+  dismissTimer = setTimeout(async () => {
+    document.body.classList.add("fading-out");
+    setTimeout(async () => {
+      document.body.classList.remove("fading-out");
+      textEl.textContent = "";
+      wordSpans = [];
+      words = [];
+      renderLinks([]);
+      setPaused(false);
+      try { await popupWindow.hide(); } catch {}
+      dismissTimer = null;
+    }, FADE_MS);
+  }, dismissDelayMs);
 });
 
 event.listen("voice:paused", () => setPaused(true));
@@ -297,18 +313,21 @@ event.listen("history:changed", () => {
 });
 
 event.listen("settings:changed", (e) => {
-  const cfg = e.payload;
-  if (cfg && typeof cfg.pin_popup === "boolean") {
-    setPinned(cfg.pin_popup);
-  }
+  applySettings(e.payload);
 });
+
+function applySettings(cfg) {
+  if (!cfg) return;
+  if (typeof cfg.pin_popup === "boolean") setPinned(cfg.pin_popup);
+  if (typeof cfg.popup_dismiss_delay_ms === "number") {
+    dismissDelayMs = cfg.popup_dismiss_delay_ms;
+  }
+}
 
 (async () => {
   try {
     const cfg = await core.invoke("get_settings");
-    if (cfg && typeof cfg.pin_popup === "boolean") {
-      setPinned(cfg.pin_popup);
-    }
+    applySettings(cfg);
   } catch {}
 })();
 

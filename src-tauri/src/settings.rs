@@ -11,6 +11,8 @@ pub struct Settings {
     pub show_popup: bool,
     #[serde(default)]
     pub pin_popup: bool,
+    #[serde(default = "default_dismiss_delay")]
+    pub popup_dismiss_delay_ms: u32,
 
     #[serde(default = "default_backend")]
     pub backend: String,
@@ -71,6 +73,9 @@ fn default_summary_threshold() -> u32 {
 fn default_summary_brevity() -> String {
     "balanced".into()
 }
+fn default_dismiss_delay() -> u32 {
+    1500
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -79,6 +84,7 @@ impl Default for Settings {
             port: 8765,
             show_popup: true,
             pin_popup: false,
+            popup_dismiss_delay_ms: default_dismiss_delay(),
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),

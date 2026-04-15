@@ -194,6 +194,10 @@ async function loadSettings() {
 
   el("enabled").checked = settings.enabled;
   el("show-popup").checked = settings.show_popup;
+  el("dismiss-delay").value = settings.popup_dismiss_delay_ms ?? 1500;
+  el("dismiss-delay-value").textContent = (
+    (settings.popup_dismiss_delay_ms ?? 1500) / 1000
+  ).toFixed(1);
   el("backend").value = settings.backend;
 
   const voiceSel = el("voice");
@@ -256,6 +260,7 @@ function collect() {
     enabled: el("enabled").checked,
     port: parseInt(el("port").value, 10),
     show_popup: el("show-popup").checked,
+    popup_dismiss_delay_ms: parseInt(el("dismiss-delay").value, 10),
     backend: el("backend").value,
     voice: el("voice").value || "Samantha",
     rate: parseInt(el("rate").value, 10),
@@ -330,6 +335,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   el("backend").addEventListener("change", updateBackendVisibility);
   el("rate").addEventListener("input", (e) => {
     el("rate-value").textContent = e.target.value;
+  });
+  el("dismiss-delay").addEventListener("input", (e) => {
+    el("dismiss-delay-value").textContent = (Number(e.target.value) / 1000).toFixed(1);
   });
   el("summary-threshold").addEventListener("input", (e) => {
     el("threshold-value").textContent = e.target.value;
