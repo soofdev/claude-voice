@@ -308,19 +308,19 @@ fn brevity_for(level: &str) -> (&'static str, u32) {
     match level {
         "detailed" => (
             "Preserve all important information. Rephrase naturally for speech; multiple sentences are fine. Do not omit meaningful details.",
-            600,
+            2000,
         ),
         "brief" => (
             "Summarize the main idea in one or two short sentences. Drop supporting details.",
-            160,
+            300,
         ),
         "minimal" => (
             "State only the single main point or conclusion in one short sentence. Nothing else.",
-            80,
+            150,
         ),
         _ => (
             "Rephrase into one short paragraph. Keep the key points and drop minor details.",
-            300,
+            800,
         ),
     }
 }

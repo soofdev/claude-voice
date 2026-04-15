@@ -2,8 +2,8 @@ const { event, core, window: tauriWindow } = window.__TAURI__;
 const popupWindow = tauriWindow.getCurrentWindow();
 const { LogicalSize } = tauriWindow;
 
-const SIZE_COLLAPSED = { w: 380, h: 180 };
-const SIZE_EXPANDED = { w: 380, h: 500 };
+const SIZE_COLLAPSED = { w: 380, h: 360 };
+const SIZE_EXPANDED = { w: 380, h: 720 };
 
 const textEl = document.getElementById("text");
 const titleEl = document.getElementById("title");
@@ -289,12 +289,6 @@ async function toggleHistory(force) {
   historyOpen = next;
   historyPanel.hidden = !next;
   historyBtn.classList.toggle("active", next);
-  const target = next ? SIZE_EXPANDED : SIZE_COLLAPSED;
-  try {
-    await popupWindow.setSize(new LogicalSize(target.w, target.h));
-  } catch (e) {
-    console.error("setSize failed", e);
-  }
   if (next) await loadHistory();
 }
 

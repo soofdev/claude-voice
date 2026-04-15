@@ -21,7 +21,8 @@ use tauri::{
 use tts::TtsEngine;
 
 const POPUP_WIDTH: f64 = 380.0;
-const POPUP_HEIGHT: f64 = 180.0;
+const POPUP_HEIGHT: f64 = 560.0;
+const POPUP_MIN_HEIGHT: f64 = 240.0;
 const POPUP_MARGIN_RIGHT: f64 = 12.0;
 const POPUP_MARGIN_TOP: f64 = 32.0;
 
@@ -240,11 +241,12 @@ pub fn run() {
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
-            .resizable(false)
+            .resizable(true)
             .focused(false)
             .skip_taskbar(true)
             .visible(false)
             .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
+            .min_inner_size(POPUP_WIDTH, POPUP_MIN_HEIGHT)
             .shadow(false)
             .accept_first_mouse(true)
             .build()?;
