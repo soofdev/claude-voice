@@ -12,7 +12,7 @@ use settings::{Settings, SettingsStore};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
-    LogicalPosition, LogicalSize, Listener, Manager, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Listener, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tts::TtsEngine;
 
@@ -23,6 +23,7 @@ const POPUP_MARGIN_TOP: f64 = 32.0;
 
 struct MenuRefs {
     enabled: CheckMenuItem<tauri::Wry>,
+    pin_popup: CheckMenuItem<tauri::Wry>,
 }
 
 #[tauri::command]
@@ -35,10 +36,27 @@ fn set_settings(
     new: Settings,
     store: tauri::State<Arc<SettingsStore>>,
     menu_refs: tauri::State<Arc<MenuRefs>>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     store.update(new.clone()).map_err(|e| e.to_string())?;
     let _ = menu_refs.enabled.set_checked(new.enabled);
+    let _ = menu_refs.pin_popup.set_checked(new.pin_popup);
+    let _ = app.emit("settings:changed", new);
     Ok(())
+}
+
+#[tauri::command]
+fn toggle_pin_popup(
+    store: tauri::State<Arc<SettingsStore>>,
+    menu_refs: tauri::State<Arc<MenuRefs>>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    let mut cfg = store.get();
+    cfg.pin_popup = !cfg.pin_popup;
+    store.update(cfg.clone()).map_err(|e| e.to_string())?;
+    let _ = menu_refs.pin_popup.set_checked(cfg.pin_popup);
+    let _ = app.emit("settings:changed", cfg.clone());
+    Ok(cfg.pin_popup)
 }
 
 #[tauri::command]
@@ -110,6 +128,7 @@ pub fn run() {
             test_speak,
             stop_speaking,
             toggle_pause,
+            toggle_pin_popup,
             hook_command,
         ])
         .setup(move |app| {
@@ -150,7 +169,6 @@ pub fn run() {
                 if !store_for_start.get().show_popup {
                     return;
                 }
-                position_popup(&popup_for_start);
                 let _ = popup_for_start.show();
             });
 
@@ -186,6 +204,14 @@ pub fn run() {
             )?;
             let stop_item =
                 MenuItem::with_id(&handle, "stop_speaking", "Stop Speaking", true, None::<&str>)?;
+            let pin_item = CheckMenuItem::with_id(
+                &handle,
+                "toggle_pin_popup",
+                "Pin Popup",
+                true,
+                initial.pin_popup,
+                None::<&str>,
+            )?;
             let settings_item =
                 MenuItem::with_id(&handle, "open_settings", "Settings…", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(&handle, "quit", "Quit", true, None::<&str>)?;
@@ -197,6 +223,7 @@ pub fn run() {
                     &pause_item,
                     &stop_item,
                     &PredefinedMenuItem::separator(&handle)?,
+                    &pin_item,
                     &settings_item,
                     &PredefinedMenuItem::separator(&handle)?,
                     &quit_item,
@@ -205,6 +232,7 @@ pub fn run() {
 
             let menu_refs = Arc::new(MenuRefs {
                 enabled: enabled_item.clone(),
+                pin_popup: pin_item.clone(),
             });
             app.manage(menu_refs);
 
@@ -239,6 +267,15 @@ pub fn run() {
                     "toggle_pause" => {
                         let tts = app.state::<Arc<TtsEngine>>();
                         tts.toggle_pause();
+                    }
+                    "toggle_pin_popup" => {
+                        let store = app.state::<Arc<SettingsStore>>();
+                        let mut cfg = store.get();
+                        cfg.pin_popup = !cfg.pin_popup;
+                        let _ = store.update(cfg.clone());
+                        let refs = app.state::<Arc<MenuRefs>>();
+                        let _ = refs.pin_popup.set_checked(cfg.pin_popup);
+                        let _ = app.emit("settings:changed", cfg);
                     }
                     "open_settings" => {
                         #[cfg(target_os = "macos")]

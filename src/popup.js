@@ -202,7 +202,23 @@ event.listen("voice:error", async (e) => {
 
 pauseBtn.addEventListener("click", () => core.invoke("toggle_pause"));
 stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
-pinBtn.addEventListener("click", () => setPinned(!pinned));
+pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
+
+event.listen("settings:changed", (e) => {
+  const cfg = e.payload;
+  if (cfg && typeof cfg.pin_popup === "boolean") {
+    setPinned(cfg.pin_popup);
+  }
+});
+
+(async () => {
+  try {
+    const cfg = await core.invoke("get_settings");
+    if (cfg && typeof cfg.pin_popup === "boolean") {
+      setPinned(cfg.pin_popup);
+    }
+  } catch {}
+})();
 
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
@@ -211,12 +227,11 @@ document.addEventListener("keydown", (e) => {
   } else if (e.code === "Escape") {
     e.preventDefault();
     if (pinned) {
-      setPinned(false);
       popupWindow.hide().catch(() => {});
     } else {
       core.invoke("stop_speaking");
     }
   } else if (e.code === "KeyP") {
-    setPinned(!pinned);
+    core.invoke("toggle_pin_popup");
   }
 });

@@ -41,6 +41,12 @@ body {
   color: #cfcfd2;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.header:active {
+  cursor: grabbing;
 }
 
 .title {

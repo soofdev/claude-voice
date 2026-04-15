@@ -9,6 +9,8 @@ pub struct Settings {
     pub port: u16,
     #[serde(default = "default_true")]
     pub show_popup: bool,
+    #[serde(default)]
+    pub pin_popup: bool,
 
     #[serde(default = "default_backend")]
     pub backend: String,
@@ -71,6 +73,7 @@ impl Default for Settings {
             enabled: true,
             port: 8765,
             show_popup: true,
+            pin_popup: false,
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),
