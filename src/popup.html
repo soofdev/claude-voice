@@ -46,6 +46,15 @@
       </div>
       <div class="text" id="text"></div>
       <div class="links" id="links" hidden></div>
+      <div class="reply">
+        <textarea id="reply-input" rows="1" placeholder="Reply to terminal… (⌘↵ to send)"></textarea>
+        <button id="reply-send" type="button" title="Send to active terminal (⌘↵)">
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path d="M3 12 L21 4 L13 21 L11 13 Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="reply-status" id="reply-status"></div>
       <div class="history-panel" id="history-panel" hidden>
         <div class="history-head">
           <span class="history-title">History</span>

@@ -193,6 +193,97 @@ fn clear_history(
 }
 
 #[tauri::command]
+fn send_to_terminal(text: String) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Err("empty prompt".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        terminal_send::send(&text)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = text;
+        Err("send-to-terminal is only implemented on macOS".to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod terminal_send {
+    use std::process::Command;
+
+    pub fn send(text: &str) -> Result<String, String> {
+        if let Some(target) = try_iterm2(text) {
+            return target;
+        }
+        try_terminal_app(text)
+    }
+
+    fn try_iterm2(text: &str) -> Option<Result<String, String>> {
+        if !is_app_running("iTerm2") {
+            return None;
+        }
+        let escaped = applescript_escape(text);
+        let script = format!(
+            r#"tell application "iTerm2" to tell current session of current window to write text "{}""#,
+            escaped
+        );
+        Some(run_osascript(&script).map(|_| "iTerm2".to_string()))
+    }
+
+    fn try_terminal_app(text: &str) -> Result<String, String> {
+        if !is_app_running("Terminal") {
+            return Err("No supported terminal is running (iTerm2 or Terminal.app)".to_string());
+        }
+        let escaped = applescript_escape(text);
+        let script = format!(
+            r#"
+tell application "Terminal" to activate
+delay 0.12
+tell application "System Events"
+    keystroke "{}"
+    key code 36
+end tell
+"#,
+            escaped
+        );
+        run_osascript(&script).map(|_| "Terminal.app".to_string())
+    }
+
+    fn is_app_running(name: &str) -> bool {
+        let script = format!(
+            r#"tell application "System Events" to (name of processes) contains "{}""#,
+            name
+        );
+        match Command::new("osascript").arg("-e").arg(&script).output() {
+            Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "true",
+            Err(_) => false,
+        }
+    }
+
+    fn run_osascript(script: &str) -> Result<(), String> {
+        let out = Command::new("osascript")
+            .arg("-e")
+            .arg(script)
+            .output()
+            .map_err(|e| format!("osascript failed: {e}"))?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() {
+                "osascript returned non-zero".to_string()
+            } else {
+                err
+            });
+        }
+        Ok(())
+    }
+
+    fn applescript_escape(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('"', "\\\"")
+    }
+}
+
+#[tauri::command]
 fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
     let port = store.get().port;
     format!(
@@ -229,6 +320,7 @@ pub fn run() {
             get_history,
             replay_history,
             clear_history,
+            send_to_terminal,
             get_sessions,
             set_session_enabled,
             rename_session,

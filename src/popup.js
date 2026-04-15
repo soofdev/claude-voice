@@ -181,6 +181,7 @@ event.listen("voice:start", (e) => {
     dismissTimer = null;
   }
   document.body.classList.remove("fading-out");
+  document.body.classList.add("speaking");
   textEl.style.color = "";
   applySessionTheme(session);
   setPaused(false);
@@ -241,6 +242,7 @@ function hexToRgba(hex, a) {
 event.listen("voice:end", async () => {
   if (errorShowing) return;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  document.body.classList.remove("speaking");
   if (pinned) {
     titleEl.textContent = "Done (pinned)";
     return;
@@ -268,6 +270,7 @@ event.listen("voice:resumed", () => setPaused(false));
 event.listen("voice:error", async (e) => {
   const msg = e.payload?.message ?? "Unknown error";
   errorShowing = true;
+  document.body.classList.remove("speaking");
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   titleEl.textContent = "Error";
   textEl.textContent = msg;
@@ -289,6 +292,62 @@ stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
 historyBtn.addEventListener("click", () => toggleHistory());
 originalBtn.addEventListener("click", () => setOriginalMode(!showingOriginal));
+
+const replyInput = document.getElementById("reply-input");
+const replySend = document.getElementById("reply-send");
+const replyStatus = document.getElementById("reply-status");
+let replyStatusTimer = null;
+
+function setReplyStatus(msg, kind) {
+  replyStatus.textContent = msg;
+  replyStatus.className = "reply-status" + (kind ? ` ${kind}` : "");
+  if (replyStatusTimer) clearTimeout(replyStatusTimer);
+  if (msg) {
+    replyStatusTimer = setTimeout(() => {
+      replyStatus.textContent = "";
+      replyStatus.className = "reply-status";
+    }, 3000);
+  }
+}
+
+replyInput.addEventListener("focus", async () => {
+  try { await popupWindow.setFocus(); } catch {}
+});
+
+replyInput.addEventListener("input", () => {
+  replyInput.style.height = "auto";
+  replyInput.style.height = Math.min(replyInput.scrollHeight, 100) + "px";
+});
+
+async function sendReply() {
+  const text = replyInput.value.trim();
+  if (!text) return;
+  replySend.disabled = true;
+  setReplyStatus("Sending…");
+  try {
+    const target = await core.invoke("send_to_terminal", { text });
+    setReplyStatus(`Sent to ${target}`, "ok");
+    replyInput.value = "";
+    replyInput.style.height = "auto";
+  } catch (e) {
+    setReplyStatus(String(e), "err");
+  } finally {
+    replySend.disabled = false;
+  }
+}
+
+replySend.addEventListener("click", sendReply);
+
+replyInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    sendReply();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    replyInput.blur();
+  }
+});
 historyClear.addEventListener("click", async () => {
   try {
     await core.invoke("clear_history");
@@ -391,6 +450,10 @@ function applySettings(cfg) {
 })();
 
 document.addEventListener("keydown", (e) => {
+  const inInput =
+    e.target instanceof HTMLTextAreaElement ||
+    e.target instanceof HTMLInputElement;
+  if (inInput && e.code !== "Escape") return;
   if (e.code === "Space") {
     e.preventDefault();
     core.invoke("toggle_pause");
