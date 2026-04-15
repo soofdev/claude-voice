@@ -244,6 +244,16 @@ button:hover {
   max-width: 240px;
 }
 
+.session-swatch {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+}
+
 .session .remove {
   font-size: 11px;
   color: #a33;

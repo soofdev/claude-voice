@@ -36,11 +36,13 @@ let startPerf = 0;
 let pausedAt = 0;
 let pauseAccum = 0;
 
+let activeTitle = "Claude speaking";
+
 function setPaused(p) {
   paused = p;
   pauseIcon.style.display = p ? "none" : "";
   playIcon.style.display = p ? "" : "none";
-  titleEl.textContent = p ? "Paused" : "Claude speaking";
+  titleEl.textContent = p ? "Paused" : activeTitle;
   dotEl.classList.toggle("paused", p);
   if (p) {
     pausedAt = performance.now();
@@ -167,6 +169,7 @@ event.listen("voice:start", (e) => {
   const text = e.payload?.text ?? "";
   const list = e.payload?.words ?? [];
   const links = e.payload?.links ?? [];
+  const session = e.payload?.session ?? null;
   errorShowing = false;
   if (dismissTimer) {
     clearTimeout(dismissTimer);
@@ -174,11 +177,34 @@ event.listen("voice:start", (e) => {
   }
   document.body.classList.remove("fading-out");
   textEl.style.color = "";
-  titleEl.textContent = "Claude speaking";
+  applySessionTheme(session);
   setPaused(false);
   startHighlight(text, list);
   renderLinks(links);
 });
+
+function applySessionTheme(session) {
+  const root = document.documentElement;
+  if (session && session.color) {
+    root.style.setProperty("--session-color", session.color);
+    root.style.setProperty("--session-color-glow", hexToRgba(session.color, 0.55));
+    root.style.setProperty("--session-color-faint", hexToRgba(session.color, 0.32));
+  } else {
+    root.style.removeProperty("--session-color");
+    root.style.removeProperty("--session-color-glow");
+    root.style.removeProperty("--session-color-faint");
+  }
+  activeTitle = session && session.label ? session.label : "Claude speaking";
+  titleEl.textContent = activeTitle;
+}
+
+function hexToRgba(hex, a) {
+  const m = hex.replace("#", "");
+  const r = parseInt(m.slice(0, 2), 16);
+  const g = parseInt(m.slice(2, 4), 16);
+  const b = parseInt(m.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
 
 event.listen("voice:end", async () => {
   if (errorShowing) return;

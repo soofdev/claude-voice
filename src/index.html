@@ -123,6 +123,17 @@
           Mute or rename any open Claude Code session. New sessions default
           to on; toggle off to silence them.
         </p>
+        <label class="row">
+          <input type="checkbox" id="speak-prefix" />
+          <span>Announce session name before speaking</span>
+        </label>
+        <div class="field">
+          <label for="prefix-skip">
+            Skip announcement if same session spoke within
+            <span id="prefix-skip-value">30</span> s
+          </label>
+          <input type="range" id="prefix-skip" min="0" max="120000" step="5000" />
+        </div>
         <ul id="sessions-list" class="sessions"></ul>
         <p id="sessions-empty" class="hint">No sessions detected yet.</p>
       </section>

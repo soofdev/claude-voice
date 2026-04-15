@@ -94,9 +94,17 @@ body.fading-out .card {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #ff5a5f;
-  box-shadow: 0 0 0 0 rgba(255, 90, 95, 0.7);
+  background: var(--session-color, #ff5a5f);
+  box-shadow: 0 0 0 0 var(--session-color-glow, rgba(255, 90, 95, 0.7));
   animation: pulse 1.4s infinite;
+}
+
+.title {
+  color: var(--session-color, #cfcfd2);
+}
+
+.card {
+  border-color: var(--session-color-faint, rgba(255, 255, 255, 0.08));
 }
 
 .dot.paused {

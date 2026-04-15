@@ -16,6 +16,21 @@ pub struct SessionInfo {
     pub last_seen_ms: u128,
     #[serde(default)]
     pub voice_override: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+const PALETTE: &[&str] = &[
+    "#ff5a5f", "#ff9a3c", "#f5cb5c", "#4ecb71", "#4dc4d3",
+    "#5b9bff", "#a47eff", "#ff77c0", "#8b9dab", "#b8e986",
+];
+
+fn pick_color(session_id: &str) -> String {
+    let mut h: u32 = 5381;
+    for b in session_id.bytes() {
+        h = h.wrapping_mul(33) ^ b as u32;
+    }
+    PALETTE[(h as usize) % PALETTE.len()].to_string()
 }
 
 fn default_true() -> bool {
@@ -57,7 +72,11 @@ impl SessionsStore {
                     enabled: true,
                     last_seen_ms: now_ms,
                     voice_override: None,
+                    color: Some(pick_color(session_id)),
                 });
+            if e.color.is_none() {
+                e.color = Some(pick_color(session_id));
+            }
             e.last_seen_ms = now_ms;
             if !cwd.is_empty() && e.cwd != cwd {
                 e.cwd = cwd.to_string();
@@ -86,6 +105,22 @@ impl SessionsStore {
 
     pub fn get(&self, session_id: &str) -> Option<SessionInfo> {
         self.0.lock().unwrap().get(session_id).cloned()
+    }
+
+    pub fn set_color(&self, session_id: &str, color: Option<String>) -> bool {
+        let changed = {
+            let mut guard = self.0.lock().unwrap();
+            if let Some(s) = guard.get_mut(session_id) {
+                s.color = color.filter(|c| !c.is_empty());
+                true
+            } else {
+                false
+            }
+        };
+        if changed {
+            let _ = save(&self.snapshot());
+        }
+        changed
     }
 
     pub fn set_voice(&self, session_id: &str, voice_id: Option<String>) -> bool {

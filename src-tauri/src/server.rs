@@ -86,7 +86,7 @@ async fn speak(
     if !cfg.enabled {
         return (StatusCode::OK, "disabled");
     }
-    s.tts.speak(req.text, cfg);
+    s.tts.speak(req.text, cfg, None);
     (StatusCode::OK, "ok")
 }
 
@@ -123,6 +123,7 @@ async fn hook_stop(
     }
 
     let mut cfg = cfg;
+    let mut session_tag: Option<crate::tts::SessionTag> = None;
     if let Some(sid) = input.session_id.as_deref() {
         let cwd = input.cwd.as_deref().unwrap_or("");
         s.sessions.upsert_active(sid, cwd, now_ms());
@@ -132,13 +133,18 @@ async fn hook_stop(
             return (StatusCode::OK, "session-muted");
         }
         if let Some(info) = s.sessions.get(sid) {
-            if let Some(voice) = info.voice_override {
+            if let Some(voice) = info.voice_override.clone() {
                 if cfg.backend == "elevenlabs" {
                     cfg.elevenlabs_voice_id = voice;
                 } else {
                     cfg.voice = voice;
                 }
             }
+            session_tag = Some(crate::tts::SessionTag {
+                id: info.session_id,
+                label: info.label,
+                color: info.color,
+            });
         }
     }
 
@@ -153,7 +159,7 @@ async fn hook_stop(
         return (StatusCode::OK, "no-input");
     };
 
-    s.tts.speak(raw, cfg);
+    s.tts.speak(raw, cfg, session_tag);
     (StatusCode::OK, "ok")
 }
 

@@ -76,7 +76,7 @@ fn test_speak(
     store: tauri::State<Arc<SettingsStore>>,
 ) {
     let cfg = store.get();
-    tts.speak(text, cfg);
+    tts.speak(text, cfg, None);
 }
 
 #[tauri::command]
@@ -137,6 +137,18 @@ fn set_session_voice(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     store.set_voice(&id, voice_id);
+    let _ = app.emit("sessions:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn set_session_color(
+    id: String,
+    color: Option<String>,
+    store: tauri::State<Arc<SessionsStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    store.set_color(&id, color);
     let _ = app.emit("sessions:changed", ());
     Ok(())
 }
@@ -221,6 +233,7 @@ pub fn run() {
             set_session_enabled,
             rename_session,
             set_session_voice,
+            set_session_color,
             remove_session,
             hook_command,
         ])

@@ -46,12 +46,30 @@ function renderSession(s) {
   const li = document.createElement("li");
   li.className = "session" + (s.enabled ? "" : " muted");
   li.dataset.sessionId = s.session_id;
+  if (s.color) {
+    li.style.borderLeft = `4px solid ${s.color}`;
+  }
 
   const info = document.createElement("div");
   info.className = "info";
 
   const labelRow = document.createElement("div");
   labelRow.className = "label-row";
+  const swatch = document.createElement("input");
+  swatch.type = "color";
+  swatch.className = "session-swatch";
+  swatch.value = s.color || "#888888";
+  swatch.title = "Session color";
+  swatch.addEventListener("change", async () => {
+    try {
+      await invoke("set_session_color", {
+        id: s.session_id,
+        color: swatch.value,
+      });
+    } catch (e) {
+      console.error("set_session_color failed", e);
+    }
+  });
   const label = document.createElement("input");
   label.className = "label";
   label.value = s.label;
@@ -64,6 +82,7 @@ function renderSession(s) {
       console.error("rename_session failed", e);
     }
   });
+  labelRow.appendChild(swatch);
   labelRow.appendChild(label);
 
   const voice = document.createElement("select");
@@ -198,6 +217,11 @@ async function loadSettings() {
   el("dismiss-delay-value").textContent = (
     (settings.popup_dismiss_delay_ms ?? 1500) / 1000
   ).toFixed(1);
+  el("speak-prefix").checked = settings.speak_session_prefix !== false;
+  el("prefix-skip").value = settings.prefix_skip_window_ms ?? 30000;
+  el("prefix-skip-value").textContent = Math.round(
+    (settings.prefix_skip_window_ms ?? 30000) / 1000,
+  );
   el("backend").value = settings.backend;
 
   const voiceSel = el("voice");
@@ -261,6 +285,8 @@ function collect() {
     port: parseInt(el("port").value, 10),
     show_popup: el("show-popup").checked,
     popup_dismiss_delay_ms: parseInt(el("dismiss-delay").value, 10),
+    speak_session_prefix: el("speak-prefix").checked,
+    prefix_skip_window_ms: parseInt(el("prefix-skip").value, 10),
     backend: el("backend").value,
     voice: el("voice").value || "Samantha",
     rate: parseInt(el("rate").value, 10),
@@ -338,6 +364,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   el("dismiss-delay").addEventListener("input", (e) => {
     el("dismiss-delay-value").textContent = (Number(e.target.value) / 1000).toFixed(1);
+  });
+  el("prefix-skip").addEventListener("input", (e) => {
+    el("prefix-skip-value").textContent = Math.round(Number(e.target.value) / 1000);
   });
   el("summary-threshold").addEventListener("input", (e) => {
     el("threshold-value").textContent = e.target.value;

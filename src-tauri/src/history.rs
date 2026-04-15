@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::link_extract::Link;
-use crate::tts::Word;
+use crate::tts::{SessionTag, Word};
 
 const MAX_ENTRIES: usize = 200;
 
@@ -24,6 +24,8 @@ pub struct HistoryEntry {
     pub audio_path: Option<String>,
     #[serde(default)]
     pub backend: String,
+    #[serde(default)]
+    pub session: Option<SessionTag>,
 }
 
 pub struct HistoryStore(Mutex<Vec<HistoryEntry>>);

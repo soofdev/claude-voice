@@ -1,5 +1,6 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::process::Command as StdCommand;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
@@ -18,11 +19,19 @@ pub struct Word {
     pub end: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SessionTag {
+    pub id: String,
+    pub label: String,
+    pub color: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 struct StartPayload {
     text: String,
     words: Vec<Word>,
     links: Vec<Link>,
+    session: Option<SessionTag>,
 }
 
 #[derive(Serialize, Clone)]
@@ -35,18 +44,41 @@ pub struct TtsEngine {
     app: OnceLock<AppHandle>,
 }
 
+enum QueueItem {
+    Speak {
+        text: String,
+        cfg: Settings,
+        session: Option<SessionTag>,
+    },
+    Replay {
+        entry: HistoryEntry,
+        cfg: Settings,
+    },
+}
+
+struct QueueState {
+    pending: VecDeque<QueueItem>,
+    runner_active: bool,
+}
+
 struct TtsInner {
+    queue: Mutex<QueueState>,
     current_pid: Mutex<Option<u32>>,
     current_task: Mutex<Option<JoinHandle<()>>>,
     paused: Mutex<bool>,
     http: reqwest::Client,
     history: OnceLock<Arc<HistoryStore>>,
+    last_spoke: Mutex<Option<(String, u128)>>,
 }
 
 impl TtsEngine {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(TtsInner {
+                queue: Mutex::new(QueueState {
+                    pending: VecDeque::new(),
+                    runner_active: false,
+                }),
                 current_pid: Mutex::new(None),
                 current_task: Mutex::new(None),
                 paused: Mutex::new(false),
@@ -55,6 +87,7 @@ impl TtsEngine {
                     .build()
                     .unwrap_or_else(|_| reqwest::Client::new()),
                 history: OnceLock::new(),
+                last_spoke: Mutex::new(None),
             }),
             app: OnceLock::new(),
         }
@@ -68,33 +101,47 @@ impl TtsEngine {
         let _ = self.inner.history.set(h);
     }
 
-    pub fn speak(&self, text: String, cfg: Settings) {
-        self.stop();
+    pub fn speak(&self, text: String, cfg: Settings, session: Option<SessionTag>) {
         if text.trim().is_empty() {
             return;
         }
-        let inner = self.inner.clone();
-        let app = self.app.get().cloned();
-        let handle = tauri::async_runtime::spawn(async move {
-            run_pipeline(inner, app, text, cfg).await;
-        });
-        *self.inner.current_task.lock().unwrap() = Some(handle);
+        self.enqueue(QueueItem::Speak { text, cfg, session });
     }
 
     pub fn replay(&self, entry: HistoryEntry, cfg: Settings) {
-        self.stop();
         if entry.spoken.trim().is_empty() {
             return;
         }
-        let inner = self.inner.clone();
-        let app = self.app.get().cloned();
-        let handle = tauri::async_runtime::spawn(async move {
-            replay_pipeline(inner, app, entry, cfg).await;
-        });
-        *self.inner.current_task.lock().unwrap() = Some(handle);
+        self.enqueue(QueueItem::Replay { entry, cfg });
+    }
+
+    fn enqueue(&self, item: QueueItem) {
+        let needs_spawn = {
+            let mut q = self.inner.queue.lock().unwrap();
+            q.pending.push_back(item);
+            if !q.runner_active {
+                q.runner_active = true;
+                true
+            } else {
+                false
+            }
+        };
+        if needs_spawn {
+            let inner = self.inner.clone();
+            let app = self.app.get().cloned();
+            let handle = tauri::async_runtime::spawn(async move {
+                runner(inner, app).await;
+            });
+            *self.inner.current_task.lock().unwrap() = Some(handle);
+        }
     }
 
     pub fn stop(&self) {
+        {
+            let mut q = self.inner.queue.lock().unwrap();
+            q.pending.clear();
+            q.runner_active = false;
+        }
         if let Some(task) = self.inner.current_task.lock().unwrap().take() {
             task.abort();
         }
@@ -176,11 +223,35 @@ impl TtsEngine {
     }
 }
 
+async fn runner(inner: Arc<TtsInner>, app: Option<AppHandle>) {
+    loop {
+        let next = {
+            let mut q = inner.queue.lock().unwrap();
+            if let Some(item) = q.pending.pop_front() {
+                Some(item)
+            } else {
+                q.runner_active = false;
+                None
+            }
+        };
+        let Some(item) = next else { break; };
+        match item {
+            QueueItem::Speak { text, cfg, session } => {
+                run_pipeline(inner.clone(), app.clone(), text, cfg, session).await;
+            }
+            QueueItem::Replay { entry, cfg } => {
+                replay_pipeline(inner.clone(), app.clone(), entry, cfg).await;
+            }
+        }
+    }
+}
+
 async fn run_pipeline(
     inner: Arc<TtsInner>,
     app: Option<AppHandle>,
     original: String,
     cfg: Settings,
+    session: Option<SessionTag>,
 ) {
     let extracted = link_extract::extract(&original);
     let links = extracted.links;
@@ -193,7 +264,7 @@ async fn run_pipeline(
         && !cfg.anthropic_api_key.is_empty()
         && cleaned.chars().count() > cfg.summary_threshold_chars as usize;
 
-    let spoken = if needs_summary {
+    let summarized = if needs_summary {
         match summarize(&inner.http, &cleaned, &cfg).await {
             Ok(s) if !s.trim().is_empty() => s,
             Ok(_) => cleaned.clone(),
@@ -206,6 +277,8 @@ async fn run_pipeline(
     } else {
         cleaned.clone()
     };
+
+    let spoken = maybe_prepend_session_prefix(&inner, &summarized, &session, &cfg);
 
     let ts = now_ms();
     let id = format!("{}", ts);
@@ -238,13 +311,14 @@ async fn run_pipeline(
             words: words.clone(),
             audio_path: audio_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             backend: cfg.backend.clone(),
+            session: session.clone(),
         });
         if let Some(app) = &app {
             let _ = app.emit("history:changed", ());
         }
     }
 
-    play_text(inner, app, spoken, links, cfg, audio_path, words).await;
+    play_text(inner, app, spoken, links, cfg, audio_path, words, session).await;
 }
 
 async fn replay_pipeline(
@@ -281,7 +355,8 @@ async fn replay_pipeline(
         }
     };
 
-    play_text(inner, app, entry.spoken, entry.links, cfg, audio_path, words).await;
+    let entry_session = entry.session.clone();
+    play_text(inner, app, entry.spoken, entry.links, cfg, audio_path, words, entry_session).await;
 }
 
 async fn play_text(
@@ -292,6 +367,7 @@ async fn play_text(
     cfg: Settings,
     audio_path: Option<std::path::PathBuf>,
     words: Vec<Word>,
+    session: Option<SessionTag>,
 ) {
     if let Some(app) = &app {
         let _ = app.emit(
@@ -300,6 +376,7 @@ async fn play_text(
                 text: spoken.clone(),
                 words: words.clone(),
                 links: links.clone(),
+                session: session.clone(),
             },
         );
     }
@@ -319,6 +396,38 @@ async fn play_text(
         if let Some(app) = &app {
             let _ = app.emit("voice:end", ());
         }
+    }
+}
+
+fn maybe_prepend_session_prefix(
+    inner: &Arc<TtsInner>,
+    spoken: &str,
+    session: &Option<SessionTag>,
+    cfg: &Settings,
+) -> String {
+    let Some(s) = session else {
+        return spoken.to_string();
+    };
+    if !cfg.speak_session_prefix || s.label.trim().is_empty() {
+        let now = now_ms();
+        *inner.last_spoke.lock().unwrap() = Some((s.id.clone(), now));
+        return spoken.to_string();
+    }
+    let now = now_ms();
+    let should_prefix = {
+        let last = inner.last_spoke.lock().unwrap();
+        match last.as_ref() {
+            Some((id, t)) if id == &s.id => {
+                now.saturating_sub(*t) > cfg.prefix_skip_window_ms as u128
+            }
+            _ => true,
+        }
+    };
+    *inner.last_spoke.lock().unwrap() = Some((s.id.clone(), now));
+    if should_prefix {
+        format!("{} says: {}", s.label, spoken)
+    } else {
+        spoken.to_string()
     }
 }
 

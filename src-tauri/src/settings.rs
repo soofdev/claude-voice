@@ -13,6 +13,10 @@ pub struct Settings {
     pub pin_popup: bool,
     #[serde(default = "default_dismiss_delay")]
     pub popup_dismiss_delay_ms: u32,
+    #[serde(default = "default_true")]
+    pub speak_session_prefix: bool,
+    #[serde(default = "default_prefix_skip_window")]
+    pub prefix_skip_window_ms: u32,
 
     #[serde(default = "default_backend")]
     pub backend: String,
@@ -76,6 +80,9 @@ fn default_summary_brevity() -> String {
 fn default_dismiss_delay() -> u32 {
     1500
 }
+fn default_prefix_skip_window() -> u32 {
+    30000
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -85,6 +92,8 @@ impl Default for Settings {
             show_popup: true,
             pin_popup: false,
             popup_dismiss_delay_ms: default_dismiss_delay(),
+            speak_session_prefix: true,
+            prefix_skip_window_ms: default_prefix_skip_window(),
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),
