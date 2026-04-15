@@ -404,7 +404,7 @@ pub fn run() {
             .skip_taskbar(true)
             .visible(false)
             .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-            .min_inner_size(POPUP_WIDTH, POPUP_MIN_HEIGHT)
+            .min_inner_size(240.0, POPUP_MIN_HEIGHT)
             .shadow(false)
             .accept_first_mouse(true)
             .build()?;

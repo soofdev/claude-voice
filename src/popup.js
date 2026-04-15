@@ -25,7 +25,7 @@ const orb = document.getElementById("orb");
 const orbCore = document.getElementById("orb-core");
 const orbLabel = document.getElementById("orb-label");
 
-const SIZE_ORB = { w: 88, h: 88 };
+const SIZE_ORB = { w: 240, h: 240 };
 
 const MAX_CHIPS = 5;
 let historyOpen = false;
