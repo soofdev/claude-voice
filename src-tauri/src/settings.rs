@@ -19,6 +19,16 @@ pub struct Settings {
     pub prefix_skip_window_ms: u32,
     #[serde(default = "default_orb_style")]
     pub orb_style: String,
+    #[serde(default)]
+    pub popup_width: Option<f64>,
+    #[serde(default)]
+    pub popup_height: Option<f64>,
+    #[serde(default)]
+    pub popup_x: Option<f64>,
+    #[serde(default)]
+    pub popup_y: Option<f64>,
+    #[serde(default)]
+    pub history_panel_width: Option<f64>,
 
     #[serde(default = "default_backend")]
     pub backend: String,
@@ -100,6 +110,11 @@ impl Default for Settings {
             speak_session_prefix: true,
             prefix_skip_window_ms: default_prefix_skip_window(),
             orb_style: default_orb_style(),
+            popup_width: None,
+            popup_height: None,
+            popup_x: None,
+            popup_y: None,
+            history_panel_width: None,
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),

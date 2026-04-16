@@ -28,7 +28,7 @@ const orbLabel = document.getElementById("orb-label");
 const SIZE_ORB = { w: 240, h: 240 };
 
 const MAX_CHIPS = 5;
-let historyOpen = false;
+let historyOpen = true;
 let showingOriginal = false;
 let minimized = false;
 let expandedSize = { ...SIZE_COLLAPSED };
@@ -322,6 +322,8 @@ pauseBtn.addEventListener("click", () => core.invoke("toggle_pause"));
 stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
 historyBtn.addEventListener("click", () => toggleHistory());
+historyBtn.classList.add("active");
+loadHistory();
 originalBtn.addEventListener("click", () => setOriginalMode(!showingOriginal));
 
 const replyInput = document.getElementById("reply-input");
@@ -599,7 +601,44 @@ function applySettings(cfg) {
   if (typeof cfg.orb_style === "string") {
     document.body.dataset.orbStyle = cfg.orb_style;
   }
+  if (typeof cfg.history_panel_width === "number" && cfg.history_panel_width > 0) {
+    applyHistoryPanelWidth(cfg.history_panel_width);
+  }
 }
+
+function applyHistoryPanelWidth(w) {
+  const clamped = Math.max(120, Math.min(360, w));
+  const panel = document.getElementById("history-panel");
+  panel.style.flex = `0 0 ${clamped}px`;
+  panel.style.width = `${clamped}px`;
+}
+
+const resizer = document.getElementById("history-resizer");
+let dragState = null;
+resizer.addEventListener("mousedown", (e) => {
+  const panel = document.getElementById("history-panel");
+  dragState = { startX: e.screenX, startWidth: panel.offsetWidth };
+  resizer.classList.add("dragging");
+  document.body.style.cursor = "col-resize";
+  e.preventDefault();
+});
+document.addEventListener("mousemove", (e) => {
+  if (!dragState) return;
+  const delta = e.screenX - dragState.startX;
+  applyHistoryPanelWidth(dragState.startWidth + delta);
+});
+document.addEventListener("mouseup", async () => {
+  if (!dragState) return;
+  dragState = null;
+  resizer.classList.remove("dragging");
+  document.body.style.cursor = "";
+  const panel = document.getElementById("history-panel");
+  try {
+    await core.invoke("set_history_panel_width", { width: panel.offsetWidth });
+  } catch (e) {
+    console.error("set_history_panel_width failed", e);
+  }
+});
 
 (async () => {
   try {

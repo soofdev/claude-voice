@@ -27,13 +27,21 @@ body {
   -webkit-backdrop-filter: blur(18px);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  gap: 12px;
   border: 2px solid rgba(255, 255, 255, 0.1);
   opacity: 1;
   transform: scale(1);
   transition: opacity 350ms ease, transform 350ms ease,
     box-shadow 400ms ease, border-color 400ms ease;
+}
+
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 body.speaking .card {
@@ -673,10 +681,28 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
+  flex: 0 0 180px;
+  width: 180px;
   min-height: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 8px;
+}
+
+.history-resizer {
+  flex: 0 0 4px;
+  width: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  cursor: col-resize;
+  align-self: stretch;
+  transition: background 120ms ease;
+}
+
+.history-resizer:hover,
+.history-resizer.dragging {
+  background: var(--session-color, rgba(120, 170, 255, 0.6));
+}
+
+.history-panel[hidden] + .history-resizer {
+  display: none;
 }
 
 .history-head {

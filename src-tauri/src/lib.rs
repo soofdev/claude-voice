@@ -415,6 +415,17 @@ fn build_hook_command(port: u16) -> String {
 }
 
 #[tauri::command]
+fn set_history_panel_width(
+    width: f64,
+    store: tauri::State<Arc<SettingsStore>>,
+) -> Result<(), String> {
+    let mut cfg = store.get();
+    cfg.history_panel_width = Some(width);
+    store.update(cfg).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn install_hook(store: tauri::State<Arc<SettingsStore>>) -> Result<String, String> {
     let port = store.get().port;
     install_hook_impl(port)
@@ -535,6 +546,7 @@ pub fn run() {
             send_to_terminal,
             transcribe_audio,
             install_hook,
+            set_history_panel_width,
             get_sessions,
             set_session_enabled,
             rename_session,
@@ -570,7 +582,15 @@ pub fn run() {
             .accept_first_mouse(true)
             .build()?;
 
-            position_popup(&popup);
+            let saved_cfg = settings_store.get();
+            if let (Some(x), Some(y)) = (saved_cfg.popup_x, saved_cfg.popup_y) {
+                let _ = popup.set_position(LogicalPosition::new(x, y));
+            } else {
+                position_popup(&popup);
+            }
+            if let (Some(w), Some(h)) = (saved_cfg.popup_width, saved_cfg.popup_height) {
+                let _ = popup.set_size(LogicalSize::new(w.max(240.0), h.max(POPUP_MIN_HEIGHT)));
+            }
             #[cfg(target_os = "macos")]
             {
                 let _ = popup.set_visible_on_all_workspaces(true);
@@ -789,6 +809,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|win, event| {
+            if win.label() == "popup" {
+                match event {
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_) => {
+                        persist_popup_geometry(win);
+                    }
+                    _ => {}
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if win.label() == "settings" {
                     api.prevent_close();
@@ -853,6 +881,25 @@ fn rebuild_sessions_submenu(
         submenu.append(&session_sub)?;
     }
     Ok(())
+}
+
+fn persist_popup_geometry(win: &tauri::Window) {
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let Ok(size) = win.inner_size() else { return };
+    let Ok(pos) = win.outer_position() else { return };
+    let lw = size.width as f64 / scale;
+    let lh = size.height as f64 / scale;
+    // Skip the minimized orb state so we don't persist the 240x240 geometry.
+    if lw < 320.0 || lh < 320.0 {
+        return;
+    }
+    let store = win.app_handle().state::<Arc<SettingsStore>>();
+    let mut cfg = store.get();
+    cfg.popup_width = Some(lw);
+    cfg.popup_height = Some(lh);
+    cfg.popup_x = Some(pos.x as f64 / scale);
+    cfg.popup_y = Some(pos.y as f64 / scale);
+    let _ = store.update(cfg);
 }
 
 fn position_popup(popup: &tauri::WebviewWindow) {
