@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Voice Bridge",
+  "version": "0.1.0",
+  "description": "Speaks agent responses from Replit (and other agentic coding platforms) through the Claude Voice desktop app.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://replit.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://replit.com/*"],
+      "js": ["content-replit.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Claude Voice Bridge",
+    "default_icon": {
+      "32": "icons/icon32.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "32": "icons/icon32.png",
+    "128": "icons/icon128.png"
+  }
+}
