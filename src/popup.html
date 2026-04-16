@@ -9,72 +9,77 @@
   </head>
   <body>
     <div class="card">
-      <div class="history-panel" id="history-panel">
-        <div class="history-head">
-          <span class="history-title">History</span>
-          <button id="history-clear" type="button" class="history-clear">Clear</button>
-        </div>
-        <ul id="history-list" class="history-list"></ul>
-        <p id="history-empty" class="history-empty" hidden>No messages yet.</p>
-      </div>
-      <div class="history-resizer" id="history-resizer" title="Drag to resize"></div>
-      <div class="main-col">
-      <div class="header" data-tauri-drag-region>
+      <div class="status-bar" data-tauri-drag-region>
         <span class="dot" id="dot" data-tauri-drag-region></span>
         <span class="title" id="title" data-tauri-drag-region>Claude speaking</span>
-        <div class="controls">
-          <button id="original-btn" type="button" title="Show full original (T)">
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path d="M5 4 H19 V20 H5 Z M8 8 H16 M8 12 H16 M8 16 H13" stroke="currentColor" stroke-width="1.6" fill="none"/>
-            </svg>
-          </button>
-          <button id="history-btn" type="button" title="History">
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path d="M3 7 L21 7 M3 12 L21 12 M3 17 L21 17" stroke="currentColor" stroke-width="2" fill="none"/>
-            </svg>
-          </button>
+        <div class="window-controls">
           <button id="pin-btn" type="button" title="Pin popup">
-            <svg viewBox="0 0 24 24" width="14" height="14">
+            <svg viewBox="0 0 24 24" width="12" height="12">
               <path d="M14 2 L22 10 L17 11 L14 14 L14 20 L13 21 L8 16 L3 21 L2 20 L7 15 L2 10 L3 9 L9 9 L12 6 L13 1 Z" fill="currentColor"/>
             </svg>
           </button>
-          <button id="pause-btn" type="button" title="Pause (space)">
-            <svg viewBox="0 0 24 24" width="14" height="14" id="pause-icon">
-              <rect x="6" y="5" width="4" height="14" fill="currentColor"/>
-              <rect x="14" y="5" width="4" height="14" fill="currentColor"/>
-            </svg>
-            <svg viewBox="0 0 24 24" width="14" height="14" id="play-icon" style="display:none">
-              <path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/>
-            </svg>
-          </button>
-          <button id="stop-btn" type="button" title="Stop">
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <rect x="6" y="6" width="12" height="12" fill="currentColor"/>
-            </svg>
-          </button>
           <button id="minimize-btn" type="button" title="Minimize to orb (M)">
-            <svg viewBox="0 0 24 24" width="14" height="14">
+            <svg viewBox="0 0 24 24" width="12" height="12">
               <path d="M5 19 H19" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
             </svg>
           </button>
         </div>
       </div>
-      <div class="text" id="text"></div>
-      <div class="links" id="links" hidden></div>
-      <div class="reply">
-        <textarea id="reply-input" rows="1" placeholder="Reply to terminal… (⌘↵ to send)"></textarea>
-        <button id="reply-mic" type="button" title="Record voice (click to start, click to stop)">
-          <svg viewBox="0 0 24 24" width="14" height="14">
-            <path d="M12 3 A3 3 0 0 0 9 6 V12 A3 3 0 0 0 15 12 V6 A3 3 0 0 0 12 3 Z M5 11 V12 A7 7 0 0 0 19 12 V11 M12 19 V22 M9 22 H15" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button id="reply-send" type="button" title="Send to active terminal (⌘↵)">
-          <svg viewBox="0 0 24 24" width="14" height="14">
-            <path d="M3 12 L21 4 L13 21 L11 13 Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-      <div class="reply-status" id="reply-status"></div>
+      <div class="card-body">
+        <div class="history-panel" id="history-panel">
+          <div class="history-head">
+            <span class="history-title">History</span>
+            <button id="history-clear" type="button" class="history-clear">Clear</button>
+          </div>
+          <ul id="history-list" class="history-list"></ul>
+          <p id="history-empty" class="history-empty" hidden>No messages yet.</p>
+        </div>
+        <div class="history-resizer" id="history-resizer" title="Drag to resize"></div>
+        <div class="main-col">
+          <div class="toolbar">
+            <button id="original-btn" type="button" title="Show full original (T)">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path d="M5 4 H19 V20 H5 Z M8 8 H16 M8 12 H16 M8 16 H13" stroke="currentColor" stroke-width="1.6" fill="none"/>
+              </svg>
+            </button>
+            <button id="history-btn" type="button" title="History">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path d="M3 7 L21 7 M3 12 L21 12 M3 17 L21 17" stroke="currentColor" stroke-width="2" fill="none"/>
+              </svg>
+            </button>
+            <div class="toolbar-spacer"></div>
+            <button id="pause-btn" type="button" title="Pause (space)">
+              <svg viewBox="0 0 24 24" width="14" height="14" id="pause-icon">
+                <rect x="6" y="5" width="4" height="14" fill="currentColor"/>
+                <rect x="14" y="5" width="4" height="14" fill="currentColor"/>
+              </svg>
+              <svg viewBox="0 0 24 24" width="14" height="14" id="play-icon" style="display:none">
+                <path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/>
+              </svg>
+            </button>
+            <button id="stop-btn" type="button" title="Stop">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <rect x="6" y="6" width="12" height="12" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="text" id="text"></div>
+          <div class="links" id="links" hidden></div>
+          <div class="reply">
+            <textarea id="reply-input" rows="1" placeholder="Reply to terminal… (⌘↵ to send)"></textarea>
+            <button id="reply-mic" type="button" title="Record voice (click to start, click to stop)">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path d="M12 3 A3 3 0 0 0 9 6 V12 A3 3 0 0 0 15 12 V6 A3 3 0 0 0 12 3 Z M5 11 V12 A7 7 0 0 0 19 12 V11 M12 19 V22 M9 22 H15" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button id="reply-send" type="button" title="Send to active terminal (⌘↵)">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path d="M3 12 L21 4 L13 21 L11 13 Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="reply-status" id="reply-status"></div>
+        </div>
       </div>
     </div>
     <div class="orb" id="orb" title="Click to expand, drag to move">

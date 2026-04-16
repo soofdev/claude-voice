@@ -22,18 +22,70 @@ body {
   background: rgba(28, 28, 30, 0.92);
   color: #f0f0f0;
   border-radius: 14px;
-  padding: 14px 16px;
+  padding: 0;
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   display: flex;
-  flex-direction: row;
-  gap: 12px;
+  flex-direction: column;
   border: 2px solid rgba(255, 255, 255, 0.1);
   opacity: 1;
   transform: scale(1);
   transition: opacity 350ms ease, transform 350ms ease,
     box-shadow 400ms ease, border-color 400ms ease;
+  overflow: hidden;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.status-bar:active {
+  cursor: grabbing;
+}
+
+.window-controls {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.window-controls button {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.window-controls button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  padding: 10px 14px 14px;
+  gap: 12px;
 }
 
 .main-col {
@@ -41,7 +93,41 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.toolbar button {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.toolbar button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.toolbar button:active {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 body.speaking .card {
@@ -89,54 +175,15 @@ body.fading-out .card {
   transform: scale(0.96);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #cfcfd2;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  cursor: grab;
-  -webkit-app-region: drag;
-}
-
-.header:active {
-  cursor: grabbing;
-}
-
 .title {
   flex: 1;
-}
-
-.controls {
-  display: flex;
-  gap: 4px;
-  -webkit-app-region: no-drag;
-}
-
-.controls button {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e6e6e6;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 120ms ease;
-}
-
-.controls button:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.controls button:active {
-  background: rgba(255, 255, 255, 0.24);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dot {
@@ -204,13 +251,18 @@ body.fading-out .card {
 }
 
 #pin-btn.active {
-  background: rgba(255, 210, 90, 0.28);
-  color: #ffd86a;
+  background: rgba(255, 210, 90, 0.28) !important;
+  color: #ffd86a !important;
 }
 
 #original-btn.active {
-  background: rgba(120, 200, 255, 0.28);
-  color: #cfe7ff;
+  background: rgba(120, 200, 255, 0.28) !important;
+  color: #cfe7ff !important;
+}
+
+#history-btn.active {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #fff !important;
 }
 
 .text.original-mode {

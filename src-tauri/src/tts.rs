@@ -118,6 +118,7 @@ impl TtsEngine {
         if entry.spoken.trim().is_empty() {
             return;
         }
+        self.stop();
         self.enqueue(QueueItem::Replay { entry, cfg });
     }
 
