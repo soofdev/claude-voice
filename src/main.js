@@ -393,4 +393,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     await navigator.clipboard.writeText(el("hook-cmd").textContent);
     setStatus("Copied.");
   });
+
+  el("install-hook").addEventListener("click", async () => {
+    const btn = el("install-hook");
+    btn.disabled = true;
+    try {
+      const result = await invoke("install_hook");
+      setStatus(result);
+    } catch (e) {
+      setStatus(`Install failed: ${e}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 });

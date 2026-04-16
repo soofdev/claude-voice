@@ -34,6 +34,7 @@ let minimized = false;
 let expandedSize = { ...SIZE_COLLAPSED };
 let currentSpokenText = "";
 let currentOriginalText = "";
+let currentSessionId = null;
 
 let paused = false;
 let pinned = false;
@@ -187,6 +188,7 @@ event.listen("voice:waking", (e) => {
   document.body.classList.remove("fading-out", "speaking");
   document.body.classList.add("waking");
   applySessionTheme(session);
+  currentSessionId = session && session.id ? session.id : null;
   if (!minimized) {
     titleEl.textContent = (session && session.label ? session.label : "Claude") + " — preparing…";
   }
@@ -210,6 +212,7 @@ event.listen("voice:start", (e) => {
   setPaused(false);
   currentSpokenText = text;
   currentOriginalText = original;
+  currentSessionId = session && session.id ? session.id : null;
   setOriginalMode(false);
   startHighlight(text, list);
   renderLinks(links);
@@ -353,7 +356,10 @@ async function sendReply() {
   replySend.disabled = true;
   setReplyStatus("Sending…");
   try {
-    const target = await core.invoke("send_to_terminal", { text });
+    const target = await core.invoke("send_to_terminal", {
+      text,
+      sessionId: currentSessionId,
+    });
     setReplyStatus(`Sent to ${target}`, "ok");
     replyInput.value = "";
     replyInput.style.height = "auto";

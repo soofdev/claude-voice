@@ -245,17 +245,25 @@ async fn transcribe_audio(
 }
 
 #[tauri::command]
-fn send_to_terminal(text: String) -> Result<String, String> {
+fn send_to_terminal(
+    text: String,
+    session_id: Option<String>,
+    sessions: tauri::State<Arc<SessionsStore>>,
+) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("empty prompt".to_string());
     }
+    let tty = session_id
+        .as_deref()
+        .and_then(|sid| sessions.get(sid))
+        .and_then(|s| s.tty);
     #[cfg(target_os = "macos")]
     {
-        terminal_send::send(&text)
+        terminal_send::send(&text, tty.as_deref())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = text;
+        let _ = (text, tty);
         Err("send-to-terminal is only implemented on macOS".to_string())
     }
 }
@@ -264,48 +272,114 @@ fn send_to_terminal(text: String) -> Result<String, String> {
 mod terminal_send {
     use std::process::Command;
 
-    pub fn send(text: &str) -> Result<String, String> {
-        if let Some(target) = try_iterm2(text) {
-            return target;
+    pub fn send(text: &str, tty: Option<&str>) -> Result<String, String> {
+        if let Some(tty) = tty {
+            if let Some(result) = try_iterm2_by_tty(text, tty) {
+                return result;
+            }
+            if let Some(result) = try_terminal_app_by_tty(text, tty) {
+                return result;
+            }
         }
-        try_terminal_app(text)
+        if let Some(result) = try_iterm2_current(text) {
+            return result;
+        }
+        try_terminal_app_current(text)
     }
 
-    fn try_iterm2(text: &str) -> Option<Result<String, String>> {
+    fn try_iterm2_by_tty(text: &str, tty: &str) -> Option<Result<String, String>> {
+        if !is_app_running("iTerm2") {
+            return None;
+        }
+        let escaped_text = applescript_escape(text);
+        let escaped_tty = applescript_escape(tty);
+        let script = format!(
+            r#"tell application "iTerm2"
+    set found to false
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                if tty of s is "{tty}" then
+                    tell s to write text "{text}"
+                    set found to true
+                end if
+            end repeat
+        end repeat
+    end repeat
+    if not found then error "no matching tty"
+end tell"#,
+            tty = escaped_tty,
+            text = escaped_text
+        );
+        match run_osascript(&script) {
+            Ok(_) => Some(Ok(format!("iTerm2 ({tty})"))),
+            Err(_) => None,
+        }
+    }
+
+    fn try_iterm2_current(text: &str) -> Option<Result<String, String>> {
         if !is_app_running("iTerm2") {
             return None;
         }
         let escaped = applescript_escape(text);
         let script = format!(
-            r#"tell application "iTerm2" to tell current session of current window to write text "{}""#,
-            escaped
+            r#"tell application "iTerm2" to tell current session of current window to write text "{escaped}""#
         );
-        Some(run_osascript(&script).map(|_| "iTerm2".to_string()))
+        Some(run_osascript(&script).map(|_| "iTerm2 (current)".to_string()))
     }
 
-    fn try_terminal_app(text: &str) -> Result<String, String> {
+    fn try_terminal_app_by_tty(text: &str, tty: &str) -> Option<Result<String, String>> {
+        if !is_app_running("Terminal") {
+            return None;
+        }
+        let escaped_tty = applescript_escape(tty);
+        let select = format!(
+            r#"tell application "Terminal"
+    set matched to missing value
+    repeat with w in windows
+        repeat with t in tabs of w
+            if tty of t is "{tty}" then set matched to t
+        end repeat
+    end repeat
+    if matched is missing value then error "no matching tty"
+    set selected tab of (first window whose tabs contains matched) to matched
+    activate
+end tell"#,
+            tty = escaped_tty
+        );
+        if run_osascript(&select).is_err() {
+            return None;
+        }
+        let escaped_text = applescript_escape(text);
+        let keystroke = format!(
+            r#"delay 0.12
+tell application "System Events"
+    keystroke "{escaped_text}"
+    key code 36
+end tell"#
+        );
+        Some(run_osascript(&keystroke).map(|_| format!("Terminal.app ({tty})")))
+    }
+
+    fn try_terminal_app_current(text: &str) -> Result<String, String> {
         if !is_app_running("Terminal") {
             return Err("No supported terminal is running (iTerm2 or Terminal.app)".to_string());
         }
         let escaped = applescript_escape(text);
         let script = format!(
-            r#"
-tell application "Terminal" to activate
+            r#"tell application "Terminal" to activate
 delay 0.12
 tell application "System Events"
-    keystroke "{}"
+    keystroke "{escaped}"
     key code 36
-end tell
-"#,
-            escaped
+end tell"#
         );
-        run_osascript(&script).map(|_| "Terminal.app".to_string())
+        run_osascript(&script).map(|_| "Terminal.app (current)".to_string())
     }
 
     fn is_app_running(name: &str) -> bool {
         let script = format!(
-            r#"tell application "System Events" to (name of processes) contains "{}""#,
-            name
+            r#"tell application "System Events" to (name of processes) contains "{name}""#
         );
         match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "true",
@@ -338,9 +412,102 @@ end tell
 #[tauri::command]
 fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
     let port = store.get().port;
+    build_hook_command(port)
+}
+
+fn build_hook_command(port: u16) -> String {
     format!(
-        "curl -s -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @-"
+        "TTY=$(ps -o tty= -p $$ | tr -d ' '); (printf '{{\"tty\":\"/dev/%s\",' \"$TTY\"; cat | sed 's/^{{//') | curl -s -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @-"
     )
+}
+
+#[tauri::command]
+fn install_hook(store: tauri::State<Arc<SettingsStore>>) -> Result<String, String> {
+    let port = store.get().port;
+    install_hook_impl(port)
+}
+
+fn install_hook_impl(port: u16) -> Result<String, String> {
+    let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
+    let path = home.join(".claude").join("settings.json");
+    let marker = format!("/hook/stop");
+
+    let mut root: serde_json::Value = match std::fs::read_to_string(&path) {
+        Ok(s) if !s.trim().is_empty() => serde_json::from_str(&s)
+            .map_err(|e| format!("failed to parse {}: {e}", path.display()))?,
+        _ => serde_json::json!({}),
+    };
+
+    if !root.is_object() {
+        return Err(format!(
+            "{} is not a JSON object",
+            path.display()
+        ));
+    }
+
+    let hooks = root
+        .as_object_mut()
+        .unwrap()
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}));
+    if !hooks.is_object() {
+        return Err("hooks is not a JSON object".to_string());
+    }
+    let stop = hooks
+        .as_object_mut()
+        .unwrap()
+        .entry("Stop")
+        .or_insert_with(|| serde_json::json!([]));
+    if !stop.is_array() {
+        return Err("hooks.Stop is not an array".to_string());
+    }
+
+    let new_cmd = build_hook_command(port);
+    let mut updated = false;
+
+    for entry in stop.as_array_mut().unwrap().iter_mut() {
+        let Some(inner) = entry.get_mut("hooks") else {
+            continue;
+        };
+        let Some(inner_arr) = inner.as_array_mut() else {
+            continue;
+        };
+        for h in inner_arr.iter_mut() {
+            let is_ours = h
+                .get("command")
+                .and_then(|c| c.as_str())
+                .map(|c| c.contains(&marker))
+                .unwrap_or(false);
+            if is_ours {
+                h.as_object_mut()
+                    .unwrap()
+                    .insert("command".to_string(), serde_json::Value::String(new_cmd.clone()));
+                h.as_object_mut()
+                    .unwrap()
+                    .insert("type".to_string(), serde_json::Value::String("command".to_string()));
+                updated = true;
+            }
+        }
+    }
+
+    let status = if !updated {
+        stop.as_array_mut().unwrap().push(serde_json::json!({
+            "hooks": [{
+                "type": "command",
+                "command": new_cmd
+            }]
+        }));
+        "Installed"
+    } else {
+        "Updated"
+    };
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    Ok(format!("{status} hook in {}", path.display()))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -374,6 +541,7 @@ pub fn run() {
             clear_history,
             send_to_terminal,
             transcribe_audio,
+            install_hook,
             get_sessions,
             set_session_enabled,
             rename_session,

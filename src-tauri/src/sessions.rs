@@ -18,6 +18,8 @@ pub struct SessionInfo {
     pub voice_override: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub tty: Option<String>,
 }
 
 const PALETTE: &[&str] = &[
@@ -60,7 +62,13 @@ impl SessionsStore {
             .unwrap_or(true)
     }
 
-    pub fn upsert_active(&self, session_id: &str, cwd: &str, now_ms: u128) -> SessionInfo {
+    pub fn upsert_active(
+        &self,
+        session_id: &str,
+        cwd: &str,
+        tty: Option<&str>,
+        now_ms: u128,
+    ) -> SessionInfo {
         let entry = {
             let mut guard = self.0.lock().unwrap();
             let e = guard
@@ -73,6 +81,7 @@ impl SessionsStore {
                     last_seen_ms: now_ms,
                     voice_override: None,
                     color: Some(pick_color(session_id)),
+                    tty: tty.map(String::from),
                 });
             if e.color.is_none() {
                 e.color = Some(pick_color(session_id));
@@ -80,6 +89,11 @@ impl SessionsStore {
             e.last_seen_ms = now_ms;
             if !cwd.is_empty() && e.cwd != cwd {
                 e.cwd = cwd.to_string();
+            }
+            if let Some(t) = tty {
+                if !t.is_empty() && t != "/dev/" {
+                    e.tty = Some(t.to_string());
+                }
             }
             e.clone()
         };
