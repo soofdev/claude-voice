@@ -20,12 +20,24 @@ const historyList = document.getElementById("history-list");
 const historyEmpty = document.getElementById("history-empty");
 const historyClear = document.getElementById("history-clear");
 const originalBtn = document.getElementById("original-btn");
+const minimizeBtn = document.getElementById("minimize-btn");
+const orb = document.getElementById("orb");
+const orbCore = document.getElementById("orb-core");
+const orbLabel = document.getElementById("orb-label");
+
+const SIZE_ORB = { w: 240, h: 240 };
 
 const MAX_CHIPS = 5;
-let historyOpen = false;
+let historyOpen = true;
+let historyViewMode = "messages";
 let showingOriginal = false;
+let minimized = false;
+let expandedSize = { ...SIZE_COLLAPSED };
 let currentSpokenText = "";
 let currentOriginalText = "";
+let currentSessionId = null;
+let selectedEntry = null;
+const replayBtn = document.getElementById("replay-btn");
 
 let paused = false;
 let pinned = false;
@@ -169,6 +181,22 @@ function startHighlight(text, list) {
   }
 }
 
+event.listen("voice:waking", (e) => {
+  const session = e.payload?.session ?? null;
+  errorShowing = false;
+  if (dismissTimer) {
+    clearTimeout(dismissTimer);
+    dismissTimer = null;
+  }
+  document.body.classList.remove("fading-out", "speaking");
+  document.body.classList.add("waking");
+  applySessionTheme(session);
+  currentSessionId = session && session.id ? session.id : null;
+  if (!minimized) {
+    titleEl.textContent = (session && session.label ? session.label : "Claude") + " — preparing…";
+  }
+});
+
 event.listen("voice:start", (e) => {
   const text = e.payload?.text ?? "";
   const original = e.payload?.original ?? text;
@@ -180,15 +208,30 @@ event.listen("voice:start", (e) => {
     clearTimeout(dismissTimer);
     dismissTimer = null;
   }
-  document.body.classList.remove("fading-out");
+  stopBrowserSpeech();
+  document.body.classList.remove("fading-out", "waking");
   document.body.classList.add("speaking");
   textEl.style.color = "";
   applySessionTheme(session);
   setPaused(false);
   currentSpokenText = text;
   currentOriginalText = original;
+  currentSessionId = session && session.id ? session.id : null;
+  selectedEntry = null;
+  replayBtn.hidden = true;
+  document.querySelectorAll(".history-entry.selected").forEach(
+    (el) => el.classList.remove("selected"),
+  );
   setOriginalMode(false);
-  startHighlight(text, list);
+
+  const browserSpeech = e.payload?.browser_speech ?? false;
+  if (browserSpeech) {
+    const bVoice = e.payload?.browser_voice ?? "";
+    const bRate = e.payload?.browser_rate ?? 1.0;
+    startBrowserSpeech(text, bVoice, bRate);
+  } else {
+    startHighlight(text, list);
+  }
   renderLinks(links);
 });
 
@@ -229,6 +272,7 @@ function applySessionTheme(session) {
   }
   activeTitle = session && session.label ? session.label : "Claude speaking";
   titleEl.textContent = activeTitle;
+  orbLabel.textContent = session && session.label ? session.label : "Claude";
 }
 
 function hexToRgba(hex, a) {
@@ -242,7 +286,10 @@ function hexToRgba(hex, a) {
 event.listen("voice:end", async () => {
   if (errorShowing) return;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-  document.body.classList.remove("speaking");
+  document.body.classList.remove("speaking", "waking");
+  if (minimized) {
+    return;
+  }
   if (pinned) {
     titleEl.textContent = "Done (pinned)";
     return;
@@ -270,27 +317,45 @@ event.listen("voice:resumed", () => setPaused(false));
 event.listen("voice:error", async (e) => {
   const msg = e.payload?.message ?? "Unknown error";
   errorShowing = true;
-  document.body.classList.remove("speaking");
+  document.body.classList.remove("speaking", "waking");
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   titleEl.textContent = "Error";
   textEl.textContent = msg;
   textEl.style.color = "#ff8a8a";
   try { await popupWindow.show(); } catch {}
   setTimeout(async () => {
+    if (!errorShowing) return;
     errorShowing = false;
     textEl.textContent = "";
     textEl.style.color = "";
-    titleEl.textContent = "Claude speaking";
+    titleEl.textContent = activeTitle || "Claude speaking";
     if (!pinned) {
       try { await popupWindow.hide(); } catch {}
     }
   }, 6000);
 });
 
-pauseBtn.addEventListener("click", () => core.invoke("toggle_pause"));
-stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
+pauseBtn.addEventListener("click", () => {
+  if (browserSpeechActive) {
+    if (speechSynthesis.paused) {
+      speechSynthesis.resume();
+      setPaused(false);
+    } else {
+      speechSynthesis.pause();
+      setPaused(true);
+    }
+  } else {
+    core.invoke("toggle_pause");
+  }
+});
+stopBtn.addEventListener("click", () => {
+  stopBrowserSpeech();
+  core.invoke("stop_speaking");
+});
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
 historyBtn.addEventListener("click", () => toggleHistory());
+historyBtn.classList.add("active");
+loadHistory();
 originalBtn.addEventListener("click", () => setOriginalMode(!showingOriginal));
 
 const replyInput = document.getElementById("reply-input");
@@ -325,7 +390,10 @@ async function sendReply() {
   replySend.disabled = true;
   setReplyStatus("Sending…");
   try {
-    const target = await core.invoke("send_to_terminal", { text });
+    const target = await core.invoke("send_to_terminal", {
+      text,
+      sessionId: currentSessionId,
+    });
     setReplyStatus(`Sent to ${target}`, "ok");
     replyInput.value = "";
     replyInput.style.height = "auto";
@@ -437,6 +505,148 @@ function pickMime() {
 }
 
 micBtn.addEventListener("click", toggleRecord);
+
+let browserSpeechActive = false;
+let browserUtterance = null;
+let browserWordMap = [];
+
+function buildWordMap(text) {
+  const map = [];
+  let pos = 0;
+  for (const w of text.split(/(\s+)/)) {
+    if (w.trim()) {
+      map.push({ text: w, start: pos, end: pos + w.length });
+    }
+    pos += w.length;
+  }
+  return map;
+}
+
+function startBrowserSpeech(text, voiceName, rate) {
+  stopBrowserSpeech();
+  browserSpeechActive = true;
+
+  browserWordMap = buildWordMap(text);
+  renderWords(
+    text,
+    browserWordMap.map((w) => ({ text: w.text, start: 0, end: 0 })),
+  );
+
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = rate || 1.0;
+
+  if (voiceName) {
+    const voices = speechSynthesis.getVoices();
+    const match = voices.find((v) => v.name === voiceName);
+    if (match) utt.voice = match;
+  }
+
+  utt.onboundary = (ev) => {
+    if (ev.name !== "word") return;
+    const ci = ev.charIndex;
+    for (let i = 0; i < browserWordMap.length; i++) {
+      if (ci >= browserWordMap[i].start && ci < browserWordMap[i].end) {
+        if (i !== activeIndex) {
+          if (activeIndex >= 0 && wordSpans[activeIndex]) {
+            wordSpans[activeIndex].classList.remove("active");
+            wordSpans[activeIndex].classList.add("past");
+          }
+          if (wordSpans[i]) {
+            wordSpans[i].classList.add("active");
+            wordSpans[i].classList.remove("past");
+            const span = wordSpans[i];
+            const parent = textEl;
+            const sTop = span.offsetTop - parent.offsetTop;
+            const sBot = sTop + span.offsetHeight;
+            if (sBot > parent.scrollTop + parent.clientHeight - 8) {
+              parent.scrollTop = sBot - parent.clientHeight + 8;
+            } else if (sTop < parent.scrollTop) {
+              parent.scrollTop = sTop;
+            }
+          }
+          activeIndex = i;
+        }
+        break;
+      }
+    }
+  };
+
+  utt.onend = () => {
+    browserSpeechActive = false;
+    browserUtterance = null;
+    document.body.classList.remove("speaking");
+    if (minimized) return;
+    if (pinned) {
+      titleEl.textContent = "Done (pinned)";
+      return;
+    }
+    if (dismissTimer) clearTimeout(dismissTimer);
+    const FADE_MS = 350;
+    dismissTimer = setTimeout(async () => {
+      document.body.classList.add("fading-out");
+      setTimeout(async () => {
+        document.body.classList.remove("fading-out");
+        textEl.textContent = "";
+        wordSpans = [];
+        words = [];
+        renderLinks([]);
+        setPaused(false);
+        try { await popupWindow.hide(); } catch {}
+        dismissTimer = null;
+      }, FADE_MS);
+    }, dismissDelayMs);
+  };
+
+  utt.onerror = () => {
+    browserSpeechActive = false;
+    browserUtterance = null;
+    document.body.classList.remove("speaking");
+  };
+
+  browserUtterance = utt;
+  speechSynthesis.speak(utt);
+}
+
+function stopBrowserSpeech() {
+  if (browserSpeechActive) {
+    speechSynthesis.cancel();
+    browserSpeechActive = false;
+    browserUtterance = null;
+  }
+}
+
+async function setMinimized(on) {
+  if (on === minimized) return;
+  minimized = on;
+  document.body.classList.toggle("minimized", on);
+  try {
+    if (on) {
+      const sz = await popupWindow.innerSize();
+      expandedSize = { w: sz.width, h: sz.height };
+      await popupWindow.setSize(new LogicalSize(SIZE_ORB.w, SIZE_ORB.h));
+    } else {
+      await popupWindow.setSize(
+        new LogicalSize(expandedSize.w || SIZE_COLLAPSED.w, expandedSize.h || SIZE_COLLAPSED.h),
+      );
+    }
+  } catch (e) {
+    console.error("setSize failed", e);
+  }
+}
+
+minimizeBtn.addEventListener("click", () => setMinimized(true));
+
+let orbPressedAt = 0;
+orbCore.addEventListener("mousedown", () => {
+  orbPressedAt = performance.now();
+});
+orbCore.addEventListener("mouseup", () => {
+  const elapsed = performance.now() - orbPressedAt;
+  if (elapsed > 0 && elapsed < 180) {
+    setMinimized(false);
+  }
+});
+orbCore.addEventListener("dblclick", () => setMinimized(false));
 historyClear.addEventListener("click", async () => {
   try {
     await core.invoke("clear_history");
@@ -462,24 +672,38 @@ function formatTime(ms) {
 function renderHistoryEntry(entry) {
   const li = document.createElement("li");
   li.className = "history-entry";
+  li.style.cursor = "pointer";
+  li.addEventListener("click", (e) => {
+    if (e.target.closest(".delete-entry")) return;
+    selectHistoryEntry(entry, li);
+  });
 
   const row = document.createElement("div");
   row.className = "row";
   const time = document.createElement("span");
   time.className = "time";
   time.textContent = formatTime(entry.timestamp_ms);
-  const replay = document.createElement("button");
-  replay.className = "replay";
-  replay.textContent = "Replay";
-  replay.addEventListener("click", async () => {
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "delete-entry";
+  del.title = "Delete";
+  del.textContent = "\u00D7";
+  del.addEventListener("click", async (e) => {
+    e.stopPropagation();
     try {
-      await core.invoke("replay_history", { id: entry.id });
-    } catch (e) {
-      console.error("replay_history failed", e);
+      await core.invoke("delete_history_entry", { id: entry.id });
+      if (selectedEntry && selectedEntry.id === entry.id) {
+        selectedEntry = null;
+        replayBtn.hidden = true;
+        textEl.textContent = "";
+        renderLinks([]);
+      }
+    } catch (err) {
+      console.error("delete_history_entry failed", err);
     }
   });
   row.appendChild(time);
-  row.appendChild(replay);
+  row.appendChild(del);
 
   const preview = document.createElement("div");
   preview.className = "preview";
@@ -490,6 +714,31 @@ function renderHistoryEntry(entry) {
   return li;
 }
 
+function selectHistoryEntry(entry, el) {
+  document.querySelectorAll(".history-entry.selected").forEach(
+    (e) => e.classList.remove("selected"),
+  );
+  if (el) el.classList.add("selected");
+  selectedEntry = entry;
+  currentSpokenText = entry.spoken || "";
+  currentOriginalText = entry.original || "";
+  currentSessionId = entry.session?.id || null;
+  applySessionTheme(entry.session || null);
+  setOriginalMode(false);
+  textEl.textContent = currentSpokenText;
+  renderLinks(entry.links || []);
+  replayBtn.hidden = false;
+}
+
+replayBtn.addEventListener("click", async () => {
+  if (!selectedEntry) return;
+  try {
+    await core.invoke("replay_history", { id: selectedEntry.id });
+  } catch (e) {
+    console.error("replay_history failed", e);
+  }
+});
+
 async function loadHistory() {
   try {
     const entries = await core.invoke("get_history");
@@ -499,13 +748,85 @@ async function loadHistory() {
       return;
     }
     historyEmpty.hidden = true;
-    for (const e of entries) {
-      historyList.appendChild(renderHistoryEntry(e));
+    if (historyViewMode === "conversations") {
+      renderConversationView(entries);
+    } else {
+      for (const e of entries) {
+        historyList.appendChild(renderHistoryEntry(e));
+      }
     }
   } catch (e) {
     console.error("get_history failed", e);
   }
 }
+
+function groupBySession(entries) {
+  const groups = new Map();
+  for (const e of entries) {
+    const sid = e.session?.id || "_none";
+    if (!groups.has(sid)) {
+      groups.set(sid, { session: e.session, entries: [] });
+    }
+    groups.get(sid).entries.push(e);
+  }
+  return Array.from(groups.values()).sort(
+    (a, b) => Number(b.entries[0].timestamp_ms) - Number(a.entries[0].timestamp_ms),
+  );
+}
+
+function renderConversationView(entries) {
+  const groups = groupBySession(entries);
+  for (const g of groups) {
+    const li = document.createElement("li");
+    li.className = "history-group";
+
+    const header = document.createElement("div");
+    header.className = "history-group-header";
+    header.addEventListener("click", () => li.classList.toggle("collapsed"));
+
+    const dot = document.createElement("span");
+    dot.className = "group-dot";
+    dot.style.background = g.session?.color || "#888";
+
+    const label = document.createElement("span");
+    label.className = "group-label";
+    label.textContent = g.session?.label || "Unknown";
+
+    const count = document.createElement("span");
+    count.className = "group-count";
+    count.textContent = `${g.entries.length}`;
+
+    const chevron = document.createElement("span");
+    chevron.className = "group-chevron";
+    chevron.textContent = "\u25BE";
+
+    header.appendChild(dot);
+    header.appendChild(label);
+    header.appendChild(count);
+    header.appendChild(chevron);
+
+    const messages = document.createElement("ul");
+    messages.className = "history-group-messages";
+    for (const e of g.entries) {
+      messages.appendChild(renderHistoryEntry(e));
+    }
+
+    li.appendChild(header);
+    li.appendChild(messages);
+    historyList.appendChild(li);
+  }
+}
+
+const viewToggleBtn = document.getElementById("history-view-toggle");
+const viewIconMessages = document.getElementById("view-icon-messages");
+const viewIconConversations = document.getElementById("view-icon-conversations");
+
+viewToggleBtn.addEventListener("click", () => {
+  historyViewMode = historyViewMode === "messages" ? "conversations" : "messages";
+  viewIconMessages.style.display = historyViewMode === "messages" ? "" : "none";
+  viewIconConversations.style.display = historyViewMode === "conversations" ? "" : "none";
+  loadHistory();
+});
 
 async function toggleHistory(force) {
   const next = typeof force === "boolean" ? force : !historyOpen;
@@ -529,7 +850,47 @@ function applySettings(cfg) {
   if (typeof cfg.popup_dismiss_delay_ms === "number") {
     dismissDelayMs = cfg.popup_dismiss_delay_ms;
   }
+  if (typeof cfg.orb_style === "string") {
+    document.body.dataset.orbStyle = cfg.orb_style;
+  }
+  if (typeof cfg.history_panel_width === "number" && cfg.history_panel_width > 0) {
+    applyHistoryPanelWidth(cfg.history_panel_width);
+  }
 }
+
+function applyHistoryPanelWidth(w) {
+  const clamped = Math.max(120, Math.min(360, w));
+  const panel = document.getElementById("history-panel");
+  panel.style.flex = `0 0 ${clamped}px`;
+  panel.style.width = `${clamped}px`;
+}
+
+const resizer = document.getElementById("history-resizer");
+let dragState = null;
+resizer.addEventListener("mousedown", (e) => {
+  const panel = document.getElementById("history-panel");
+  dragState = { startX: e.screenX, startWidth: panel.offsetWidth };
+  resizer.classList.add("dragging");
+  document.body.style.cursor = "col-resize";
+  e.preventDefault();
+});
+document.addEventListener("mousemove", (e) => {
+  if (!dragState) return;
+  const delta = e.screenX - dragState.startX;
+  applyHistoryPanelWidth(dragState.startWidth + delta);
+});
+document.addEventListener("mouseup", async () => {
+  if (!dragState) return;
+  dragState = null;
+  resizer.classList.remove("dragging");
+  document.body.style.cursor = "";
+  const panel = document.getElementById("history-panel");
+  try {
+    await core.invoke("set_history_panel_width", { width: panel.offsetWidth });
+  } catch (e) {
+    console.error("set_history_panel_width failed", e);
+  }
+});
 
 (async () => {
   try {
@@ -558,5 +919,8 @@ document.addEventListener("keydown", (e) => {
   } else if (e.code === "KeyT") {
     e.preventDefault();
     setOriginalMode(!showingOriginal);
+  } else if (e.code === "KeyM") {
+    e.preventDefault();
+    setMinimized(!minimized);
   }
 });

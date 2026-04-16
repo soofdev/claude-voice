@@ -39,6 +39,8 @@ struct StopHookInput {
     session_id: Option<String>,
     #[serde(default)]
     cwd: Option<String>,
+    #[serde(default)]
+    tty: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -126,7 +128,8 @@ async fn hook_stop(
     let mut session_tag: Option<crate::tts::SessionTag> = None;
     if let Some(sid) = input.session_id.as_deref() {
         let cwd = input.cwd.as_deref().unwrap_or("");
-        s.sessions.upsert_active(sid, cwd, now_ms());
+        let tty = input.tty.as_deref();
+        s.sessions.upsert_active(sid, cwd, tty, now_ms());
         use tauri::Emitter;
         let _ = s.app.emit("sessions:changed", ());
         if !s.sessions.is_enabled(sid) {

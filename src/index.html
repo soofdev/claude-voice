@@ -27,6 +27,15 @@
           </label>
           <input type="range" id="dismiss-delay" min="0" max="10000" step="500" />
         </div>
+        <div class="field">
+          <label for="orb-style">Orb style (minimized mode)</label>
+          <select id="orb-style">
+            <option value="glass">Glass — polished sphere with highlight</option>
+            <option value="plasma">Plasma — animated nebula swirl</option>
+            <option value="iridescent">Iridescent — pearly hue-shift</option>
+            <option value="energy">Energy — bright core with ripples</option>
+          </select>
+        </div>
       </section>
 
       <section class="group">
@@ -35,6 +44,7 @@
           <label for="backend">Engine</label>
           <select id="backend">
             <option value="say">macOS say (free, built-in)</option>
+            <option value="browser">Browser voices (free, built-in)</option>
             <option value="elevenlabs">ElevenLabs (AI voice)</option>
           </select>
         </div>
@@ -47,6 +57,19 @@
           <div class="field">
             <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
             <input type="range" id="rate" min="120" max="320" step="5" />
+          </div>
+        </div>
+
+        <div id="browser-settings" hidden>
+          <div class="field">
+            <label for="browser-voice">Voice</label>
+            <select id="browser-voice"></select>
+          </div>
+          <div class="field">
+            <label for="browser-rate">
+              Rate: <span id="browser-rate-value">1.0</span>x
+            </label>
+            <input type="range" id="browser-rate" min="0.5" max="2.0" step="0.1" />
           </div>
         </div>
 
@@ -146,9 +169,13 @@
         </div>
         <code id="hook-cmd" class="hook"></code>
         <div class="row">
+          <button id="install-hook" type="button" class="primary">Install / Update hook</button>
           <button id="copy-hook" type="button">Copy</button>
-          <span class="hint">Add as a Stop hook in ~/.claude/settings.json</span>
         </div>
+        <span class="hint">
+          Click Install to write the hook into ~/.claude/settings.json, or
+          Copy to paste it yourself.
+        </span>
       </section>
 
       <p id="status" class="status"></p>

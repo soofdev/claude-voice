@@ -33,6 +33,17 @@ struct StartPayload {
     words: Vec<Word>,
     links: Vec<Link>,
     session: Option<SessionTag>,
+    #[serde(default)]
+    browser_speech: bool,
+    #[serde(default)]
+    browser_voice: String,
+    #[serde(default)]
+    browser_rate: f32,
+}
+
+#[derive(Serialize, Clone)]
+struct WakingPayload {
+    session: Option<SessionTag>,
 }
 
 #[derive(Serialize, Clone)]
@@ -113,6 +124,7 @@ impl TtsEngine {
         if entry.spoken.trim().is_empty() {
             return;
         }
+        self.stop();
         self.enqueue(QueueItem::Replay { entry, cfg });
     }
 
@@ -254,6 +266,15 @@ async fn run_pipeline(
     cfg: Settings,
     session: Option<SessionTag>,
 ) {
+    if let Some(app) = &app {
+        let _ = app.emit(
+            "voice:waking",
+            WakingPayload {
+                session: session.clone(),
+            },
+        );
+    }
+
     let extracted = link_extract::extract(&original);
     let links = extracted.links;
     let cleaned = clean_for_speech(&extracted.text);
@@ -290,12 +311,9 @@ async fn run_pipeline(
         match fetch_elevenlabs(&inner.http, &spoken, &cfg, &dest).await {
             Ok(ws) => (Some(dest), ws),
             Err(e) => {
-                eprintln!("[claude-voice] elevenlabs fetch failed: {e}");
-                emit_error(&app, &format!("Playback failed: {e}"));
-                if let Some(app) = &app {
-                    let _ = app.emit("voice:end", ());
-                }
-                return;
+                eprintln!("[claude-voice] elevenlabs fetch failed, falling back to say: {e}");
+                emit_error(&app, &format!("ElevenLabs unavailable — using system voice. ({e})"));
+                (None, approximate_words(&spoken, cfg.rate))
             }
         }
     } else {
@@ -334,6 +352,17 @@ async fn replay_pipeline(
         .map(std::path::PathBuf::from)
         .filter(|p| p.exists());
 
+    if cached_path.is_none() {
+        if let Some(app) = &app {
+            let _ = app.emit(
+                "voice:waking",
+                WakingPayload {
+                    session: entry.session.clone(),
+                },
+            );
+        }
+    }
+
     let (audio_path, words) = if let Some(p) = cached_path {
         (Some(p), entry.words.clone())
     } else {
@@ -343,12 +372,9 @@ async fn replay_pipeline(
             match fetch_elevenlabs(&inner.http, &entry.spoken, &cfg, &dest).await {
                 Ok(ws) => (Some(dest), ws),
                 Err(e) => {
-                    eprintln!("[claude-voice] replay fetch failed: {e}");
-                    emit_error(&app, &format!("Replay failed: {e}"));
-                    if let Some(app) = &app {
-                        let _ = app.emit("voice:end", ());
-                    }
-                    return;
+                    eprintln!("[claude-voice] replay fetch failed, falling back to say: {e}");
+                    emit_error(&app, &format!("ElevenLabs unavailable — using system voice. ({e})"));
+                    (None, approximate_words(&entry.spoken, cfg.rate))
                 }
             }
         } else {
@@ -383,6 +409,7 @@ async fn play_text(
     words: Vec<Word>,
     session: Option<SessionTag>,
 ) {
+    let is_browser = cfg.backend == "browser";
     if let Some(app) = &app {
         let _ = app.emit(
             "voice:start",
@@ -392,8 +419,19 @@ async fn play_text(
                 words: words.clone(),
                 links: links.clone(),
                 session: session.clone(),
+                browser_speech: is_browser,
+                browser_voice: if is_browser {
+                    cfg.browser_voice.clone()
+                } else {
+                    String::new()
+                },
+                browser_rate: if is_browser { cfg.browser_rate } else { 1.0 },
             },
         );
+    }
+
+    if is_browser {
+        return;
     }
 
     let played = if let Some(path) = &audio_path {
@@ -447,24 +485,14 @@ fn maybe_prepend_session_prefix(
 }
 
 fn brevity_for(level: &str) -> (&'static str, u32) {
-    match level {
-        "detailed" => (
-            "Preserve all important information. Rephrase naturally for speech; multiple sentences are fine. Do not omit meaningful details.",
-            2000,
-        ),
-        "brief" => (
-            "Summarize the main idea in one or two short sentences. Drop supporting details.",
-            300,
-        ),
-        "minimal" => (
-            "State only the single main point or conclusion in one short sentence. Nothing else.",
-            150,
-        ),
-        _ => (
-            "Rephrase into one short paragraph. Keep the key points and drop minor details.",
-            800,
-        ),
-    }
+    const MAX_OUTPUT_TOKENS: u32 = 4096;
+    let instruction = match level {
+        "detailed" => "Preserve all important information. Rephrase naturally for speech; multiple sentences are fine. Do not omit meaningful details.",
+        "brief" => "Summarize the main idea in one or two short sentences. Drop supporting details.",
+        "minimal" => "State only the single main point or conclusion in one short sentence. Nothing else.",
+        _ => "Rephrase into one short paragraph. Keep the key points and drop minor details.",
+    };
+    (instruction, MAX_OUTPUT_TOKENS)
 }
 
 fn emit_error(app: &Option<AppHandle>, message: &str) {
@@ -515,6 +543,14 @@ async fn summarize(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let stop_reason = v
+        .get("stop_reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if stop_reason == "max_tokens" {
+        eprintln!("[claude-voice] summarizer hit max_tokens cap; rephrase was clipped");
+        anyhow::bail!("Summarizer hit output cap — try a shorter brevity level or increase the cap");
+    }
     Ok(text)
 }
 

@@ -17,6 +17,18 @@ pub struct Settings {
     pub speak_session_prefix: bool,
     #[serde(default = "default_prefix_skip_window")]
     pub prefix_skip_window_ms: u32,
+    #[serde(default = "default_orb_style")]
+    pub orb_style: String,
+    #[serde(default)]
+    pub popup_width: Option<f64>,
+    #[serde(default)]
+    pub popup_height: Option<f64>,
+    #[serde(default)]
+    pub popup_x: Option<f64>,
+    #[serde(default)]
+    pub popup_y: Option<f64>,
+    #[serde(default)]
+    pub history_panel_width: Option<f64>,
 
     #[serde(default = "default_backend")]
     pub backend: String,
@@ -25,6 +37,11 @@ pub struct Settings {
     pub voice: String,
     #[serde(default = "default_rate")]
     pub rate: u32,
+
+    #[serde(default)]
+    pub browser_voice: String,
+    #[serde(default = "default_browser_rate")]
+    pub browser_rate: f32,
 
     #[serde(default)]
     pub elevenlabs_api_key: String,
@@ -59,6 +76,9 @@ fn default_say_voice() -> String {
 fn default_rate() -> u32 {
     200
 }
+fn default_browser_rate() -> f32 {
+    1.0
+}
 fn default_eleven_voice() -> String {
     "pNInz6obpgDQGcFmaJgB".into()
 }
@@ -83,6 +103,9 @@ fn default_dismiss_delay() -> u32 {
 fn default_prefix_skip_window() -> u32 {
     30000
 }
+fn default_orb_style() -> String {
+    "glass".into()
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -94,9 +117,17 @@ impl Default for Settings {
             popup_dismiss_delay_ms: default_dismiss_delay(),
             speak_session_prefix: true,
             prefix_skip_window_ms: default_prefix_skip_window(),
+            orb_style: default_orb_style(),
+            popup_width: None,
+            popup_height: None,
+            popup_x: None,
+            popup_y: None,
+            history_panel_width: None,
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),
+            browser_voice: String::new(),
+            browser_rate: default_browser_rate(),
             elevenlabs_api_key: String::new(),
             elevenlabs_voice_id: default_eleven_voice(),
             elevenlabs_model_id: default_eleven_model(),

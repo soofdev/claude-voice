@@ -183,6 +183,17 @@ fn replay_history(
 }
 
 #[tauri::command]
+fn delete_history_entry(
+    id: String,
+    history: tauri::State<Arc<HistoryStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    history.remove_entry(&id);
+    let _ = app.emit("history:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 fn clear_history(
     history: tauri::State<Arc<HistoryStore>>,
     app: tauri::AppHandle,
@@ -245,17 +256,25 @@ async fn transcribe_audio(
 }
 
 #[tauri::command]
-fn send_to_terminal(text: String) -> Result<String, String> {
+fn send_to_terminal(
+    text: String,
+    session_id: Option<String>,
+    sessions: tauri::State<Arc<SessionsStore>>,
+) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("empty prompt".to_string());
     }
+    let tty = session_id
+        .as_deref()
+        .and_then(|sid| sessions.get(sid))
+        .and_then(|s| s.tty);
     #[cfg(target_os = "macos")]
     {
-        terminal_send::send(&text)
+        terminal_send::send(&text, tty.as_deref())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = text;
+        let _ = (text, tty);
         Err("send-to-terminal is only implemented on macOS".to_string())
     }
 }
@@ -264,48 +283,107 @@ fn send_to_terminal(text: String) -> Result<String, String> {
 mod terminal_send {
     use std::process::Command;
 
-    pub fn send(text: &str) -> Result<String, String> {
-        if let Some(target) = try_iterm2(text) {
-            return target;
+    pub fn send(text: &str, tty: Option<&str>) -> Result<String, String> {
+        if let Some(tty) = tty {
+            if let Some(result) = try_iterm2_by_tty(text, tty) {
+                return result;
+            }
+            if let Some(result) = try_terminal_app_by_tty(text, tty) {
+                return result;
+            }
         }
-        try_terminal_app(text)
+        if let Some(result) = try_iterm2_current(text) {
+            return result;
+        }
+        try_terminal_app_current(text)
     }
 
-    fn try_iterm2(text: &str) -> Option<Result<String, String>> {
+    fn try_iterm2_by_tty(text: &str, tty: &str) -> Option<Result<String, String>> {
+        if !is_app_running("iTerm2") {
+            return None;
+        }
+        let escaped_text = applescript_escape(text);
+        let escaped_tty = applescript_escape(tty);
+        let script = format!(
+            r#"tell application "iTerm2"
+    set found to false
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                if tty of s is "{tty}" then
+                    tell s to write text "{text}"
+                    set found to true
+                end if
+            end repeat
+        end repeat
+    end repeat
+    if not found then error "no matching tty"
+end tell"#,
+            tty = escaped_tty,
+            text = escaped_text
+        );
+        match run_osascript(&script) {
+            Ok(_) => Some(Ok(format!("iTerm2 ({tty})"))),
+            Err(_) => None,
+        }
+    }
+
+    fn try_iterm2_current(text: &str) -> Option<Result<String, String>> {
         if !is_app_running("iTerm2") {
             return None;
         }
         let escaped = applescript_escape(text);
         let script = format!(
-            r#"tell application "iTerm2" to tell current session of current window to write text "{}""#,
-            escaped
+            r#"tell application "iTerm2" to tell current session of current window to write text "{escaped}""#
         );
-        Some(run_osascript(&script).map(|_| "iTerm2".to_string()))
+        Some(run_osascript(&script).map(|_| "iTerm2 (current)".to_string()))
     }
 
-    fn try_terminal_app(text: &str) -> Result<String, String> {
+    fn try_terminal_app_by_tty(text: &str, tty: &str) -> Option<Result<String, String>> {
+        if !is_app_running("Terminal") {
+            return None;
+        }
+        let escaped_tty = applescript_escape(tty);
+        let escaped_text = applescript_escape(text);
+        let script = format!(
+            r#"tell application "Terminal"
+    set matched to missing value
+    repeat with w in windows
+        repeat with t in tabs of w
+            if tty of t is "{tty}" then set matched to t
+        end repeat
+    end repeat
+    if matched is missing value then error "no matching tty"
+    do script "{text}" in matched
+end tell"#,
+            tty = escaped_tty,
+            text = escaped_text
+        );
+        match run_osascript(&script) {
+            Ok(_) => Some(Ok(format!("Terminal.app ({tty})"))),
+            Err(_) => None,
+        }
+    }
+
+    fn try_terminal_app_current(text: &str) -> Result<String, String> {
         if !is_app_running("Terminal") {
             return Err("No supported terminal is running (iTerm2 or Terminal.app)".to_string());
         }
         let escaped = applescript_escape(text);
         let script = format!(
-            r#"
-tell application "Terminal" to activate
+            r#"tell application "Terminal" to activate
 delay 0.12
 tell application "System Events"
-    keystroke "{}"
+    keystroke "{escaped}"
     key code 36
-end tell
-"#,
-            escaped
+end tell"#
         );
-        run_osascript(&script).map(|_| "Terminal.app".to_string())
+        run_osascript(&script).map(|_| "Terminal.app (current)".to_string())
     }
 
     fn is_app_running(name: &str) -> bool {
         let script = format!(
-            r#"tell application "System Events" to (name of processes) contains "{}""#,
-            name
+            r#"tell application "System Events" to (name of processes) contains "{name}""#
         );
         match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "true",
@@ -338,9 +416,113 @@ end tell
 #[tauri::command]
 fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
     let port = store.get().port;
+    build_hook_command(port)
+}
+
+fn build_hook_command(port: u16) -> String {
     format!(
-        "curl -s -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @-"
+        "TTY=$(ps -o tty= -p $$ | tr -d ' '); (printf '{{\"tty\":\"/dev/%s\",' \"$TTY\"; cat | sed 's/^{{//') | curl -s -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @-"
     )
+}
+
+#[tauri::command]
+fn set_history_panel_width(
+    width: f64,
+    store: tauri::State<Arc<SettingsStore>>,
+) -> Result<(), String> {
+    let mut cfg = store.get();
+    cfg.history_panel_width = Some(width);
+    store.update(cfg).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn install_hook(store: tauri::State<Arc<SettingsStore>>) -> Result<String, String> {
+    let port = store.get().port;
+    install_hook_impl(port)
+}
+
+fn install_hook_impl(port: u16) -> Result<String, String> {
+    let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
+    let path = home.join(".claude").join("settings.json");
+    let marker = format!("/hook/stop");
+
+    let mut root: serde_json::Value = match std::fs::read_to_string(&path) {
+        Ok(s) if !s.trim().is_empty() => serde_json::from_str(&s)
+            .map_err(|e| format!("failed to parse {}: {e}", path.display()))?,
+        _ => serde_json::json!({}),
+    };
+
+    if !root.is_object() {
+        return Err(format!(
+            "{} is not a JSON object",
+            path.display()
+        ));
+    }
+
+    let hooks = root
+        .as_object_mut()
+        .unwrap()
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}));
+    if !hooks.is_object() {
+        return Err("hooks is not a JSON object".to_string());
+    }
+    let stop = hooks
+        .as_object_mut()
+        .unwrap()
+        .entry("Stop")
+        .or_insert_with(|| serde_json::json!([]));
+    if !stop.is_array() {
+        return Err("hooks.Stop is not an array".to_string());
+    }
+
+    let new_cmd = build_hook_command(port);
+    let mut updated = false;
+
+    for entry in stop.as_array_mut().unwrap().iter_mut() {
+        let Some(inner) = entry.get_mut("hooks") else {
+            continue;
+        };
+        let Some(inner_arr) = inner.as_array_mut() else {
+            continue;
+        };
+        for h in inner_arr.iter_mut() {
+            let is_ours = h
+                .get("command")
+                .and_then(|c| c.as_str())
+                .map(|c| c.contains(&marker))
+                .unwrap_or(false);
+            if is_ours {
+                h.as_object_mut()
+                    .unwrap()
+                    .insert("command".to_string(), serde_json::Value::String(new_cmd.clone()));
+                h.as_object_mut()
+                    .unwrap()
+                    .insert("type".to_string(), serde_json::Value::String("command".to_string()));
+                updated = true;
+            }
+        }
+    }
+
+    let status = if !updated {
+        stop.as_array_mut().unwrap().push(serde_json::json!({
+            "hooks": [{
+                "type": "command",
+                "command": new_cmd
+            }]
+        }));
+        "Installed"
+    } else {
+        "Updated"
+    };
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    Ok(format!("{status} hook in {}", path.display()))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -371,9 +553,12 @@ pub fn run() {
             toggle_pin_popup,
             get_history,
             replay_history,
+            delete_history_entry,
             clear_history,
             send_to_terminal,
             transcribe_audio,
+            install_hook,
+            set_history_panel_width,
             get_sessions,
             set_session_enabled,
             rename_session,
@@ -404,12 +589,20 @@ pub fn run() {
             .skip_taskbar(true)
             .visible(false)
             .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-            .min_inner_size(POPUP_WIDTH, POPUP_MIN_HEIGHT)
+            .min_inner_size(240.0, POPUP_MIN_HEIGHT)
             .shadow(false)
             .accept_first_mouse(true)
             .build()?;
 
-            position_popup(&popup);
+            let saved_cfg = settings_store.get();
+            if let (Some(x), Some(y)) = (saved_cfg.popup_x, saved_cfg.popup_y) {
+                let _ = popup.set_position(LogicalPosition::new(x, y));
+            } else {
+                position_popup(&popup);
+            }
+            if let (Some(w), Some(h)) = (saved_cfg.popup_width, saved_cfg.popup_height) {
+                let _ = popup.set_size(LogicalSize::new(w.max(240.0), h.max(POPUP_MIN_HEIGHT)));
+            }
             #[cfg(target_os = "macos")]
             {
                 let _ = popup.set_visible_on_all_workspaces(true);
@@ -422,6 +615,15 @@ pub fn run() {
                     return;
                 }
                 let _ = popup_for_start.show();
+            });
+
+            let popup_for_wake = popup.clone();
+            let store_for_wake = settings_store.clone();
+            handle.listen("voice:waking", move |_| {
+                if !store_for_wake.get().show_popup {
+                    return;
+                }
+                let _ = popup_for_wake.show();
             });
 
             // popup owns its own hide logic (respects pin)
@@ -619,6 +821,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|win, event| {
+            if win.label() == "popup" {
+                match event {
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_) => {
+                        persist_popup_geometry(win);
+                    }
+                    _ => {}
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if win.label() == "settings" {
                     api.prevent_close();
@@ -683,6 +893,25 @@ fn rebuild_sessions_submenu(
         submenu.append(&session_sub)?;
     }
     Ok(())
+}
+
+fn persist_popup_geometry(win: &tauri::Window) {
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let Ok(size) = win.inner_size() else { return };
+    let Ok(pos) = win.outer_position() else { return };
+    let lw = size.width as f64 / scale;
+    let lh = size.height as f64 / scale;
+    // Skip the minimized orb state so we don't persist the 240x240 geometry.
+    if lw < 320.0 || lh < 320.0 {
+        return;
+    }
+    let store = win.app_handle().state::<Arc<SettingsStore>>();
+    let mut cfg = store.get();
+    cfg.popup_width = Some(lw);
+    cfg.popup_height = Some(lh);
+    cfg.popup_x = Some(pos.x as f64 / scale);
+    cfg.popup_y = Some(pos.y as f64 / scale);
+    let _ = store.update(cfg);
 }
 
 fn position_popup(popup: &tauri::WebviewWindow) {
