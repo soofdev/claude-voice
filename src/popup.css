@@ -130,6 +130,11 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
+.toolbar button.copied {
+  background: rgba(90, 200, 120, 0.35);
+  color: #fff;
+}
+
 body.speaking .card {
   border-color: var(--session-color, rgba(255, 255, 255, 0.25));
   animation: card-glow 1.8s ease-in-out infinite;
@@ -670,6 +675,75 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
   transform: translate(-50%, calc(100% + 4px));
 }
 
+.code-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 260px;
+  overflow-y: auto;
+  flex: 0 0 auto;
+}
+
+.code-block {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.code-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.code-block-lang {
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.code-block-copy {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cfd6e0;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.code-block-copy:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.code-block-copy.copied {
+  background: rgba(90, 200, 120, 0.35);
+  color: #fff;
+}
+
+.code-block-body {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #dde3ea;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 .links {
   display: flex;
   flex-wrap: wrap;
@@ -788,6 +862,26 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
 .history-clear:hover {
   background: rgba(217, 135, 135, 0.15);
   border-color: rgba(217, 135, 135, 0.4);
+}
+
+.history-search {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e8e8e8;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  outline: none;
+}
+
+.history-search:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.history-search::placeholder {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .history-list {

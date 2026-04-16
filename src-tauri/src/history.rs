@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::code_extract::CodeBlock;
 use crate::link_extract::Link;
 use crate::tts::{SessionTag, Word};
 
@@ -18,6 +19,8 @@ pub struct HistoryEntry {
     pub spoken: String,
     #[serde(default)]
     pub links: Vec<Link>,
+    #[serde(default)]
+    pub code_blocks: Vec<CodeBlock>,
     #[serde(default)]
     pub words: Vec<Word>,
     #[serde(default)]

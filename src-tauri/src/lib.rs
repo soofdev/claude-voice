@@ -1,3 +1,4 @@
+mod code_extract;
 mod history;
 mod link_extract;
 mod server;
@@ -538,6 +539,17 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    toggle_popup_visibility(app);
+                })
+                .build(),
+        )
         .manage(settings_store.clone())
         .manage(history_store.clone())
         .manage(sessions_store.clone())
@@ -822,6 +834,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            {
+                use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+                let shortcut = Shortcut::new(
+                    Some(Modifiers::SUPER | Modifiers::SHIFT),
+                    Code::KeyV,
+                );
+                if let Err(e) = app.global_shortcut().register(shortcut) {
+                    eprintln!("[claude-voice] global shortcut register failed: {e}");
+                }
+            }
+
             let state_for_server = AppState {
                 tts: tts.clone(),
                 settings: settings_store.clone(),
@@ -928,6 +951,32 @@ fn persist_popup_geometry(win: &tauri::Window) {
     cfg.popup_x = Some(pos.x as f64 / scale);
     cfg.popup_y = Some(pos.y as f64 / scale);
     let _ = store.update(cfg);
+}
+
+fn toggle_popup_visibility(app: &tauri::AppHandle) {
+    let Some(win) = app.get_webview_window("popup") else {
+        return;
+    };
+    let visible = win.is_visible().unwrap_or(false);
+    if visible {
+        let _ = win.hide();
+    } else {
+        let mut on_screen = false;
+        if let (Ok(pos), Ok(size), Ok(scale)) =
+            (win.outer_position(), win.outer_size(), win.scale_factor())
+        {
+            let x = pos.x as f64 / scale;
+            let y = pos.y as f64 / scale;
+            let w = size.width as f64 / scale;
+            let h = size.height as f64 / scale;
+            on_screen = position_on_any_monitor(&win, x, y, w, h);
+        }
+        if !on_screen {
+            position_popup(&win);
+        }
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
 }
 
 fn position_on_any_monitor(popup: &tauri::WebviewWindow, x: f64, y: f64, w: f64, h: f64) -> bool {

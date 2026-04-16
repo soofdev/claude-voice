@@ -39,6 +39,7 @@
             </button>
             <button id="history-clear" type="button" class="history-clear">Clear</button>
           </div>
+          <input id="history-search" type="text" class="history-search" placeholder="Search…" />
           <ul id="history-list" class="history-list"></ul>
           <p id="history-empty" class="history-empty" hidden>No messages yet.</p>
         </div>
@@ -53,6 +54,12 @@
             <button id="history-btn" type="button" title="History">
               <svg viewBox="0 0 24 24" width="14" height="14">
                 <path d="M3 7 L21 7 M3 12 L21 12 M3 17 L21 17" stroke="currentColor" stroke-width="2" fill="none"/>
+              </svg>
+            </button>
+            <button id="copy-btn" type="button" title="Copy message (C)">
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <rect x="8" y="4" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/>
+                <path d="M16 20 H6 A2 2 0 0 1 4 18 V8" stroke="currentColor" stroke-width="1.6" fill="none"/>
               </svg>
             </button>
             <div class="toolbar-spacer"></div>
@@ -77,6 +84,7 @@
             </button>
           </div>
           <div class="text" id="text"></div>
+          <div class="code-blocks" id="code-blocks" hidden></div>
           <div class="links" id="links" hidden></div>
           <div class="reply">
             <textarea id="reply-input" rows="1" placeholder="Reply to terminal… (⌘↵ to send)"></textarea>

@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter};
 use tauri::async_runtime::JoinHandle;
 use tokio::process::Command;
 
+use crate::code_extract::{self, CodeBlock};
 use crate::history::{audio_path_for, now_ms, HistoryEntry, HistoryStore};
 use crate::link_extract::{self, Link};
 use crate::settings::Settings;
@@ -33,6 +34,7 @@ struct StartPayload {
     original: String,
     words: Vec<Word>,
     links: Vec<Link>,
+    code_blocks: Vec<CodeBlock>,
     session: Option<SessionTag>,
     #[serde(default)]
     browser_speech: bool,
@@ -278,6 +280,7 @@ async fn run_pipeline(
 
     let extracted = link_extract::extract(&original);
     let links = extracted.links;
+    let code_blocks = code_extract::extract(&original);
     let cleaned = clean_for_speech(&extracted.text);
     if cleaned.trim().is_empty() {
         return;
@@ -328,6 +331,7 @@ async fn run_pipeline(
             original: original.clone(),
             spoken: spoken.clone(),
             links: links.clone(),
+            code_blocks: code_blocks.clone(),
             words: words.clone(),
             audio_path: audio_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             backend: cfg.backend.clone(),
@@ -338,7 +342,7 @@ async fn run_pipeline(
         }
     }
 
-    play_text(inner, app, id, spoken, original, links, cfg, audio_path, words, session).await;
+    play_text(inner, app, id, spoken, original, links, code_blocks, cfg, audio_path, words, session).await;
 }
 
 async fn replay_pipeline(
@@ -386,6 +390,7 @@ async fn replay_pipeline(
     let entry_session = entry.session.clone();
     let entry_original = entry.original.clone();
     let entry_id = entry.id.clone();
+    let entry_code_blocks = entry.code_blocks.clone();
     play_text(
         inner,
         app,
@@ -393,6 +398,7 @@ async fn replay_pipeline(
         entry.spoken,
         entry_original,
         entry.links,
+        entry_code_blocks,
         cfg,
         audio_path,
         words,
@@ -408,6 +414,7 @@ async fn play_text(
     spoken: String,
     original: String,
     links: Vec<Link>,
+    code_blocks: Vec<CodeBlock>,
     cfg: Settings,
     audio_path: Option<std::path::PathBuf>,
     words: Vec<Word>,
@@ -423,6 +430,7 @@ async fn play_text(
                 original: original.clone(),
                 words: words.clone(),
                 links: links.clone(),
+                code_blocks: code_blocks.clone(),
                 session: session.clone(),
                 browser_speech: is_browser,
                 browser_voice: if is_browser {
