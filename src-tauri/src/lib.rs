@@ -333,7 +333,8 @@ end tell"#,
             return None;
         }
         let escaped_tty = applescript_escape(tty);
-        let select = format!(
+        let escaped_text = applescript_escape(text);
+        let script = format!(
             r#"tell application "Terminal"
     set matched to missing value
     repeat with w in windows
@@ -342,23 +343,15 @@ end tell"#,
         end repeat
     end repeat
     if matched is missing value then error "no matching tty"
-    set selected tab of (first window whose tabs contains matched) to matched
-    activate
+    do script "{text}" in matched
 end tell"#,
-            tty = escaped_tty
+            tty = escaped_tty,
+            text = escaped_text
         );
-        if run_osascript(&select).is_err() {
-            return None;
+        match run_osascript(&script) {
+            Ok(_) => Some(Ok(format!("Terminal.app ({tty})"))),
+            Err(_) => None,
         }
-        let escaped_text = applescript_escape(text);
-        let keystroke = format!(
-            r#"delay 0.12
-tell application "System Events"
-    keystroke "{escaped_text}"
-    key code 36
-end tell"#
-        );
-        Some(run_osascript(&keystroke).map(|_| format!("Terminal.app ({tty})")))
     }
 
     fn try_terminal_app_current(text: &str) -> Result<String, String> {
