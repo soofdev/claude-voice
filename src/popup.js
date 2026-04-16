@@ -36,6 +36,7 @@ let expandedSize = { ...SIZE_COLLAPSED };
 let currentSpokenText = "";
 let currentOriginalText = "";
 let currentSessionId = null;
+let currentEntryId = null;
 let selectedEntry = null;
 const replayBtn = document.getElementById("replay-btn");
 
@@ -217,11 +218,10 @@ event.listen("voice:start", (e) => {
   currentSpokenText = text;
   currentOriginalText = original;
   currentSessionId = session && session.id ? session.id : null;
+  currentEntryId = e.payload?.id ?? null;
   selectedEntry = null;
   replayBtn.hidden = true;
-  document.querySelectorAll(".history-entry.selected").forEach(
-    (el) => el.classList.remove("selected"),
-  );
+  applyCurrentHighlight();
   setOriginalMode(false);
 
   const browserSpeech = e.payload?.browser_speech ?? false;
@@ -622,7 +622,8 @@ async function setMinimized(on) {
   try {
     if (on) {
       const sz = await popupWindow.innerSize();
-      expandedSize = { w: sz.width, h: sz.height };
+      const scale = await popupWindow.scaleFactor();
+      expandedSize = { w: sz.width / scale, h: sz.height / scale };
       await popupWindow.setSize(new LogicalSize(SIZE_ORB.w, SIZE_ORB.h));
     } else {
       await popupWindow.setSize(
@@ -672,6 +673,8 @@ function formatTime(ms) {
 function renderHistoryEntry(entry) {
   const li = document.createElement("li");
   li.className = "history-entry";
+  li.dataset.entryId = entry.id;
+  if (entry.id === currentEntryId) li.classList.add("selected");
   li.style.cursor = "pointer";
   li.addEventListener("click", (e) => {
     if (e.target.closest(".delete-entry")) return;
@@ -715,11 +718,8 @@ function renderHistoryEntry(entry) {
 }
 
 function selectHistoryEntry(entry, el) {
-  document.querySelectorAll(".history-entry.selected").forEach(
-    (e) => e.classList.remove("selected"),
-  );
-  if (el) el.classList.add("selected");
   selectedEntry = entry;
+  currentEntryId = entry.id;
   currentSpokenText = entry.spoken || "";
   currentOriginalText = entry.original || "";
   currentSessionId = entry.session?.id || null;
@@ -728,6 +728,18 @@ function selectHistoryEntry(entry, el) {
   textEl.textContent = currentSpokenText;
   renderLinks(entry.links || []);
   replayBtn.hidden = false;
+  applyCurrentHighlight();
+}
+
+function applyCurrentHighlight() {
+  document.querySelectorAll(".history-entry.selected").forEach(
+    (el) => el.classList.remove("selected"),
+  );
+  if (!currentEntryId) return;
+  const el = document.querySelector(
+    `.history-entry[data-entry-id="${CSS.escape(currentEntryId)}"]`,
+  );
+  if (el) el.classList.add("selected");
 }
 
 replayBtn.addEventListener("click", async () => {
@@ -832,6 +844,8 @@ async function toggleHistory(force) {
   const next = typeof force === "boolean" ? force : !historyOpen;
   historyOpen = next;
   historyPanel.hidden = !next;
+  const resizerEl = document.getElementById("history-resizer");
+  if (resizerEl) resizerEl.hidden = !next;
   historyBtn.classList.toggle("active", next);
   if (next) await loadHistory();
 }

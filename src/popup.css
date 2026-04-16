@@ -738,6 +738,10 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
   min-height: 0;
 }
 
+.history-panel[hidden] {
+  display: none;
+}
+
 .history-resizer {
   flex: 0 0 4px;
   width: 4px;

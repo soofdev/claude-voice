@@ -28,6 +28,7 @@ pub struct SessionTag {
 
 #[derive(Serialize, Clone)]
 struct StartPayload {
+    id: String,
     text: String,
     original: String,
     words: Vec<Word>,
@@ -337,7 +338,7 @@ async fn run_pipeline(
         }
     }
 
-    play_text(inner, app, spoken, original, links, cfg, audio_path, words, session).await;
+    play_text(inner, app, id, spoken, original, links, cfg, audio_path, words, session).await;
 }
 
 async fn replay_pipeline(
@@ -384,9 +385,11 @@ async fn replay_pipeline(
 
     let entry_session = entry.session.clone();
     let entry_original = entry.original.clone();
+    let entry_id = entry.id.clone();
     play_text(
         inner,
         app,
+        entry_id,
         entry.spoken,
         entry_original,
         entry.links,
@@ -401,6 +404,7 @@ async fn replay_pipeline(
 async fn play_text(
     inner: Arc<TtsInner>,
     app: Option<AppHandle>,
+    id: String,
     spoken: String,
     original: String,
     links: Vec<Link>,
@@ -414,6 +418,7 @@ async fn play_text(
         let _ = app.emit(
             "voice:start",
             StartPayload {
+                id: id.clone(),
                 text: spoken.clone(),
                 original: original.clone(),
                 words: words.clone(),
