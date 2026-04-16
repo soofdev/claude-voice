@@ -208,6 +208,7 @@ event.listen("voice:start", (e) => {
     clearTimeout(dismissTimer);
     dismissTimer = null;
   }
+  stopBrowserSpeech();
   document.body.classList.remove("fading-out", "waking");
   document.body.classList.add("speaking");
   textEl.style.color = "";
@@ -219,10 +220,18 @@ event.listen("voice:start", (e) => {
   selectedEntry = null;
   replayBtn.hidden = true;
   document.querySelectorAll(".history-entry.selected").forEach(
-    (e) => e.classList.remove("selected"),
+    (el) => el.classList.remove("selected"),
   );
   setOriginalMode(false);
-  startHighlight(text, list);
+
+  const browserSpeech = e.payload?.browser_speech ?? false;
+  if (browserSpeech) {
+    const bVoice = e.payload?.browser_voice ?? "";
+    const bRate = e.payload?.browser_rate ?? 1.0;
+    startBrowserSpeech(text, bVoice, bRate);
+  } else {
+    startHighlight(text, list);
+  }
   renderLinks(links);
 });
 
@@ -326,8 +335,23 @@ event.listen("voice:error", async (e) => {
   }, 6000);
 });
 
-pauseBtn.addEventListener("click", () => core.invoke("toggle_pause"));
-stopBtn.addEventListener("click", () => core.invoke("stop_speaking"));
+pauseBtn.addEventListener("click", () => {
+  if (browserSpeechActive) {
+    if (speechSynthesis.paused) {
+      speechSynthesis.resume();
+      setPaused(false);
+    } else {
+      speechSynthesis.pause();
+      setPaused(true);
+    }
+  } else {
+    core.invoke("toggle_pause");
+  }
+});
+stopBtn.addEventListener("click", () => {
+  stopBrowserSpeech();
+  core.invoke("stop_speaking");
+});
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
 historyBtn.addEventListener("click", () => toggleHistory());
 historyBtn.classList.add("active");
@@ -481,6 +505,115 @@ function pickMime() {
 }
 
 micBtn.addEventListener("click", toggleRecord);
+
+let browserSpeechActive = false;
+let browserUtterance = null;
+let browserWordMap = [];
+
+function buildWordMap(text) {
+  const map = [];
+  let pos = 0;
+  for (const w of text.split(/(\s+)/)) {
+    if (w.trim()) {
+      map.push({ text: w, start: pos, end: pos + w.length });
+    }
+    pos += w.length;
+  }
+  return map;
+}
+
+function startBrowserSpeech(text, voiceName, rate) {
+  stopBrowserSpeech();
+  browserSpeechActive = true;
+
+  browserWordMap = buildWordMap(text);
+  renderWords(
+    text,
+    browserWordMap.map((w) => ({ text: w.text, start: 0, end: 0 })),
+  );
+
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = rate || 1.0;
+
+  if (voiceName) {
+    const voices = speechSynthesis.getVoices();
+    const match = voices.find((v) => v.name === voiceName);
+    if (match) utt.voice = match;
+  }
+
+  utt.onboundary = (ev) => {
+    if (ev.name !== "word") return;
+    const ci = ev.charIndex;
+    for (let i = 0; i < browserWordMap.length; i++) {
+      if (ci >= browserWordMap[i].start && ci < browserWordMap[i].end) {
+        if (i !== activeIndex) {
+          if (activeIndex >= 0 && wordSpans[activeIndex]) {
+            wordSpans[activeIndex].classList.remove("active");
+            wordSpans[activeIndex].classList.add("past");
+          }
+          if (wordSpans[i]) {
+            wordSpans[i].classList.add("active");
+            wordSpans[i].classList.remove("past");
+            const span = wordSpans[i];
+            const parent = textEl;
+            const sTop = span.offsetTop - parent.offsetTop;
+            const sBot = sTop + span.offsetHeight;
+            if (sBot > parent.scrollTop + parent.clientHeight - 8) {
+              parent.scrollTop = sBot - parent.clientHeight + 8;
+            } else if (sTop < parent.scrollTop) {
+              parent.scrollTop = sTop;
+            }
+          }
+          activeIndex = i;
+        }
+        break;
+      }
+    }
+  };
+
+  utt.onend = () => {
+    browserSpeechActive = false;
+    browserUtterance = null;
+    document.body.classList.remove("speaking");
+    if (minimized) return;
+    if (pinned) {
+      titleEl.textContent = "Done (pinned)";
+      return;
+    }
+    if (dismissTimer) clearTimeout(dismissTimer);
+    const FADE_MS = 350;
+    dismissTimer = setTimeout(async () => {
+      document.body.classList.add("fading-out");
+      setTimeout(async () => {
+        document.body.classList.remove("fading-out");
+        textEl.textContent = "";
+        wordSpans = [];
+        words = [];
+        renderLinks([]);
+        setPaused(false);
+        try { await popupWindow.hide(); } catch {}
+        dismissTimer = null;
+      }, FADE_MS);
+    }, dismissDelayMs);
+  };
+
+  utt.onerror = () => {
+    browserSpeechActive = false;
+    browserUtterance = null;
+    document.body.classList.remove("speaking");
+  };
+
+  browserUtterance = utt;
+  speechSynthesis.speak(utt);
+}
+
+function stopBrowserSpeech() {
+  if (browserSpeechActive) {
+    speechSynthesis.cancel();
+    browserSpeechActive = false;
+    browserUtterance = null;
+  }
+}
 
 async function setMinimized(on) {
   if (on === minimized) return;

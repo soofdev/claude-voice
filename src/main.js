@@ -223,6 +223,9 @@ async function loadSettings() {
     (settings.prefix_skip_window_ms ?? 30000) / 1000,
   );
   el("orb-style").value = settings.orb_style || "glass";
+  el("browser-voice").value = settings.browser_voice || "";
+  el("browser-rate").value = settings.browser_rate ?? 1.0;
+  el("browser-rate-value").textContent = Number(settings.browser_rate ?? 1.0).toFixed(1);
   el("backend").value = settings.backend;
 
   const voiceSel = el("voice");
@@ -276,7 +279,28 @@ function populateElevenVoices(voices, selectedId) {
 function updateBackendVisibility() {
   const backend = el("backend").value;
   el("say-settings").hidden = backend !== "say";
+  el("browser-settings").hidden = backend !== "browser";
   el("eleven-settings").hidden = backend !== "elevenlabs";
+  if (backend === "browser") loadBrowserVoices();
+}
+
+function loadBrowserVoices() {
+  const sel = el("browser-voice");
+  const populate = () => {
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return;
+    sel.innerHTML = "";
+    for (const v of voices) {
+      const opt = document.createElement("option");
+      opt.value = v.name;
+      opt.textContent = `${v.name} (${v.lang})`;
+      sel.appendChild(opt);
+    }
+    const saved = currentSettings.browser_voice;
+    if (saved) sel.value = saved;
+  };
+  populate();
+  speechSynthesis.onvoiceschanged = populate;
 }
 
 function collect() {
@@ -286,6 +310,8 @@ function collect() {
     port: parseInt(el("port").value, 10),
     show_popup: el("show-popup").checked,
     popup_dismiss_delay_ms: parseInt(el("dismiss-delay").value, 10),
+    browser_voice: el("browser-voice").value || "",
+    browser_rate: parseFloat(el("browser-rate").value),
     speak_session_prefix: el("speak-prefix").checked,
     prefix_skip_window_ms: parseInt(el("prefix-skip").value, 10),
     orb_style: el("orb-style").value || "glass",
@@ -366,6 +392,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   el("dismiss-delay").addEventListener("input", (e) => {
     el("dismiss-delay-value").textContent = (Number(e.target.value) / 1000).toFixed(1);
+  });
+  el("browser-rate").addEventListener("input", (e) => {
+    el("browser-rate-value").textContent = Number(e.target.value).toFixed(1);
   });
   el("prefix-skip").addEventListener("input", (e) => {
     el("prefix-skip-value").textContent = Math.round(Number(e.target.value) / 1000);

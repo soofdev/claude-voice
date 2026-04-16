@@ -39,6 +39,11 @@ pub struct Settings {
     pub rate: u32,
 
     #[serde(default)]
+    pub browser_voice: String,
+    #[serde(default = "default_browser_rate")]
+    pub browser_rate: f32,
+
+    #[serde(default)]
     pub elevenlabs_api_key: String,
     #[serde(default = "default_eleven_voice")]
     pub elevenlabs_voice_id: String,
@@ -70,6 +75,9 @@ fn default_say_voice() -> String {
 }
 fn default_rate() -> u32 {
     200
+}
+fn default_browser_rate() -> f32 {
+    1.0
 }
 fn default_eleven_voice() -> String {
     "pNInz6obpgDQGcFmaJgB".into()
@@ -118,6 +126,8 @@ impl Default for Settings {
             backend: default_backend(),
             voice: default_say_voice(),
             rate: default_rate(),
+            browser_voice: String::new(),
+            browser_rate: default_browser_rate(),
             elevenlabs_api_key: String::new(),
             elevenlabs_voice_id: default_eleven_voice(),
             elevenlabs_model_id: default_eleven_model(),

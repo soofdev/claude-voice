@@ -33,6 +33,12 @@ struct StartPayload {
     words: Vec<Word>,
     links: Vec<Link>,
     session: Option<SessionTag>,
+    #[serde(default)]
+    browser_speech: bool,
+    #[serde(default)]
+    browser_voice: String,
+    #[serde(default)]
+    browser_rate: f32,
 }
 
 #[derive(Serialize, Clone)]
@@ -403,6 +409,7 @@ async fn play_text(
     words: Vec<Word>,
     session: Option<SessionTag>,
 ) {
+    let is_browser = cfg.backend == "browser";
     if let Some(app) = &app {
         let _ = app.emit(
             "voice:start",
@@ -412,8 +419,19 @@ async fn play_text(
                 words: words.clone(),
                 links: links.clone(),
                 session: session.clone(),
+                browser_speech: is_browser,
+                browser_voice: if is_browser {
+                    cfg.browser_voice.clone()
+                } else {
+                    String::new()
+                },
+                browser_rate: if is_browser { cfg.browser_rate } else { 1.0 },
             },
         );
+    }
+
+    if is_browser {
+        return;
     }
 
     let played = if let Some(path) = &audio_path {

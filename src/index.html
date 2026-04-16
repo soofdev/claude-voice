@@ -44,6 +44,7 @@
           <label for="backend">Engine</label>
           <select id="backend">
             <option value="say">macOS say (free, built-in)</option>
+            <option value="browser">Browser voices (free, built-in)</option>
             <option value="elevenlabs">ElevenLabs (AI voice)</option>
           </select>
         </div>
@@ -56,6 +57,19 @@
           <div class="field">
             <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
             <input type="range" id="rate" min="120" max="320" step="5" />
+          </div>
+        </div>
+
+        <div id="browser-settings" hidden>
+          <div class="field">
+            <label for="browser-voice">Voice</label>
+            <select id="browser-voice"></select>
+          </div>
+          <div class="field">
+            <label for="browser-rate">
+              Rate: <span id="browser-rate-value">1.0</span>x
+            </label>
+            <input type="range" id="browser-rate" min="0.5" max="2.0" step="0.1" />
           </div>
         </div>
 
