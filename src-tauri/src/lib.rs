@@ -183,6 +183,17 @@ fn replay_history(
 }
 
 #[tauri::command]
+fn delete_history_entry(
+    id: String,
+    history: tauri::State<Arc<HistoryStore>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    history.remove_entry(&id);
+    let _ = app.emit("history:changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 fn clear_history(
     history: tauri::State<Arc<HistoryStore>>,
     app: tauri::AppHandle,
@@ -542,6 +553,7 @@ pub fn run() {
             toggle_pin_popup,
             get_history,
             replay_history,
+            delete_history_entry,
             clear_history,
             send_to_terminal,
             transcribe_audio,

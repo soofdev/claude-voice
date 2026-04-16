@@ -29,12 +29,15 @@ const SIZE_ORB = { w: 240, h: 240 };
 
 const MAX_CHIPS = 5;
 let historyOpen = true;
+let historyViewMode = "messages";
 let showingOriginal = false;
 let minimized = false;
 let expandedSize = { ...SIZE_COLLAPSED };
 let currentSpokenText = "";
 let currentOriginalText = "";
 let currentSessionId = null;
+let selectedEntry = null;
+const replayBtn = document.getElementById("replay-btn");
 
 let paused = false;
 let pinned = false;
@@ -213,6 +216,11 @@ event.listen("voice:start", (e) => {
   currentSpokenText = text;
   currentOriginalText = original;
   currentSessionId = session && session.id ? session.id : null;
+  selectedEntry = null;
+  replayBtn.hidden = true;
+  document.querySelectorAll(".history-entry.selected").forEach(
+    (e) => e.classList.remove("selected"),
+  );
   setOriginalMode(false);
   startHighlight(text, list);
   renderLinks(links);
@@ -531,24 +539,38 @@ function formatTime(ms) {
 function renderHistoryEntry(entry) {
   const li = document.createElement("li");
   li.className = "history-entry";
+  li.style.cursor = "pointer";
+  li.addEventListener("click", (e) => {
+    if (e.target.closest(".delete-entry")) return;
+    selectHistoryEntry(entry, li);
+  });
 
   const row = document.createElement("div");
   row.className = "row";
   const time = document.createElement("span");
   time.className = "time";
   time.textContent = formatTime(entry.timestamp_ms);
-  const replay = document.createElement("button");
-  replay.className = "replay";
-  replay.textContent = "Replay";
-  replay.addEventListener("click", async () => {
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "delete-entry";
+  del.title = "Delete";
+  del.textContent = "\u00D7";
+  del.addEventListener("click", async (e) => {
+    e.stopPropagation();
     try {
-      await core.invoke("replay_history", { id: entry.id });
-    } catch (e) {
-      console.error("replay_history failed", e);
+      await core.invoke("delete_history_entry", { id: entry.id });
+      if (selectedEntry && selectedEntry.id === entry.id) {
+        selectedEntry = null;
+        replayBtn.hidden = true;
+        textEl.textContent = "";
+        renderLinks([]);
+      }
+    } catch (err) {
+      console.error("delete_history_entry failed", err);
     }
   });
   row.appendChild(time);
-  row.appendChild(replay);
+  row.appendChild(del);
 
   const preview = document.createElement("div");
   preview.className = "preview";
@@ -559,6 +581,31 @@ function renderHistoryEntry(entry) {
   return li;
 }
 
+function selectHistoryEntry(entry, el) {
+  document.querySelectorAll(".history-entry.selected").forEach(
+    (e) => e.classList.remove("selected"),
+  );
+  if (el) el.classList.add("selected");
+  selectedEntry = entry;
+  currentSpokenText = entry.spoken || "";
+  currentOriginalText = entry.original || "";
+  currentSessionId = entry.session?.id || null;
+  applySessionTheme(entry.session || null);
+  setOriginalMode(false);
+  textEl.textContent = currentSpokenText;
+  renderLinks(entry.links || []);
+  replayBtn.hidden = false;
+}
+
+replayBtn.addEventListener("click", async () => {
+  if (!selectedEntry) return;
+  try {
+    await core.invoke("replay_history", { id: selectedEntry.id });
+  } catch (e) {
+    console.error("replay_history failed", e);
+  }
+});
+
 async function loadHistory() {
   try {
     const entries = await core.invoke("get_history");
@@ -568,13 +615,85 @@ async function loadHistory() {
       return;
     }
     historyEmpty.hidden = true;
-    for (const e of entries) {
-      historyList.appendChild(renderHistoryEntry(e));
+    if (historyViewMode === "conversations") {
+      renderConversationView(entries);
+    } else {
+      for (const e of entries) {
+        historyList.appendChild(renderHistoryEntry(e));
+      }
     }
   } catch (e) {
     console.error("get_history failed", e);
   }
 }
+
+function groupBySession(entries) {
+  const groups = new Map();
+  for (const e of entries) {
+    const sid = e.session?.id || "_none";
+    if (!groups.has(sid)) {
+      groups.set(sid, { session: e.session, entries: [] });
+    }
+    groups.get(sid).entries.push(e);
+  }
+  return Array.from(groups.values()).sort(
+    (a, b) => Number(b.entries[0].timestamp_ms) - Number(a.entries[0].timestamp_ms),
+  );
+}
+
+function renderConversationView(entries) {
+  const groups = groupBySession(entries);
+  for (const g of groups) {
+    const li = document.createElement("li");
+    li.className = "history-group";
+
+    const header = document.createElement("div");
+    header.className = "history-group-header";
+    header.addEventListener("click", () => li.classList.toggle("collapsed"));
+
+    const dot = document.createElement("span");
+    dot.className = "group-dot";
+    dot.style.background = g.session?.color || "#888";
+
+    const label = document.createElement("span");
+    label.className = "group-label";
+    label.textContent = g.session?.label || "Unknown";
+
+    const count = document.createElement("span");
+    count.className = "group-count";
+    count.textContent = `${g.entries.length}`;
+
+    const chevron = document.createElement("span");
+    chevron.className = "group-chevron";
+    chevron.textContent = "\u25BE";
+
+    header.appendChild(dot);
+    header.appendChild(label);
+    header.appendChild(count);
+    header.appendChild(chevron);
+
+    const messages = document.createElement("ul");
+    messages.className = "history-group-messages";
+    for (const e of g.entries) {
+      messages.appendChild(renderHistoryEntry(e));
+    }
+
+    li.appendChild(header);
+    li.appendChild(messages);
+    historyList.appendChild(li);
+  }
+}
+
+const viewToggleBtn = document.getElementById("history-view-toggle");
+const viewIconMessages = document.getElementById("view-icon-messages");
+const viewIconConversations = document.getElementById("view-icon-conversations");
+
+viewToggleBtn.addEventListener("click", () => {
+  historyViewMode = historyViewMode === "messages" ? "conversations" : "messages";
+  viewIconMessages.style.display = historyViewMode === "messages" ? "" : "none";
+  viewIconConversations.style.display = historyViewMode === "conversations" ? "" : "none";
+  loadHistory();
+});
 
 async function toggleHistory(force) {
   const next = typeof force === "boolean" ? force : !historyOpen;

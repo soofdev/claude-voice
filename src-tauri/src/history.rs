@@ -65,6 +65,29 @@ impl HistoryStore {
         }
     }
 
+    pub fn remove_entry(&self, id: &str) {
+        let removed = {
+            let mut guard = self.0.lock().unwrap();
+            let before = guard.len();
+            guard.retain(|e| e.id != id);
+            let after = guard.len();
+            if before != after {
+                let snapshot = guard.clone();
+                drop(guard);
+                if let Err(e) = save(&snapshot) {
+                    eprintln!("[claude-voice] history save failed: {e}");
+                }
+                true
+            } else {
+                false
+            }
+        };
+        if removed {
+            let path = audio_path_for(id);
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     pub fn clear(&self) {
         let removed = {
             let mut guard = self.0.lock().unwrap();

@@ -29,6 +29,14 @@
         <div class="history-panel" id="history-panel">
           <div class="history-head">
             <span class="history-title">History</span>
+            <button id="history-view-toggle" type="button" class="history-toggle-btn" title="Toggle message / conversation view">
+              <svg viewBox="0 0 24 24" width="12" height="12" id="view-icon-messages">
+                <path d="M3 6 H21 M3 12 H21 M3 18 H21" stroke="currentColor" stroke-width="2" fill="none"/>
+              </svg>
+              <svg viewBox="0 0 24 24" width="12" height="12" id="view-icon-conversations" style="display:none">
+                <path d="M4 4 H14 V10 H7 L4 13 Z M10 14 H20 V20 H13 L10 23 Z" stroke="currentColor" stroke-width="1.6" fill="none"/>
+              </svg>
+            </button>
             <button id="history-clear" type="button" class="history-clear">Clear</button>
           </div>
           <ul id="history-list" class="history-list"></ul>
@@ -48,6 +56,11 @@
               </svg>
             </button>
             <div class="toolbar-spacer"></div>
+            <button id="replay-btn" type="button" title="Replay selected message" hidden>
+              <svg viewBox="0 0 24 24" width="14" height="14">
+                <path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/>
+              </svg>
+            </button>
             <button id="pause-btn" type="button" title="Pause (space)">
               <svg viewBox="0 0 24 24" width="14" height="14" id="pause-icon">
                 <rect x="6" y="5" width="4" height="14" fill="currentColor"/>
