@@ -198,3 +198,220 @@ fn dedupe(links: &mut Vec<Link>) {
     let mut seen = std::collections::HashSet::new();
     links.retain(|l| seen.insert(l.url.clone()));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── extract ──
+
+    #[test]
+    fn no_links() {
+        let e = extract("plain text");
+        assert_eq!(e.text, "plain text");
+        assert!(e.links.is_empty());
+    }
+
+    #[test]
+    fn markdown_link_extracted() {
+        let e = extract("see [docs](https://example.com/docs) here");
+        assert_eq!(e.text, "see docs here");
+        assert_eq!(e.links.len(), 1);
+        assert_eq!(e.links[0].label, "docs");
+        assert_eq!(e.links[0].url, "https://example.com/docs");
+    }
+
+    #[test]
+    fn bare_url_extracted() {
+        let e = extract("visit https://github.com/foo/bar today");
+        assert_eq!(e.links.len(), 1);
+        assert_eq!(e.links[0].url, "https://github.com/foo/bar");
+        assert!(e.text.contains("(github.com link)"));
+    }
+
+    #[test]
+    fn multiple_links_deduplicated() {
+        let e = extract("https://example.com and https://example.com again");
+        assert_eq!(e.links.len(), 1);
+    }
+
+    #[test]
+    fn links_inside_code_blocks_ignored() {
+        let e = extract("```\nhttps://example.com\n```");
+        assert!(e.links.is_empty());
+    }
+
+    #[test]
+    fn trailing_punctuation_stripped() {
+        let e = extract("see https://example.com/path.");
+        assert_eq!(e.links[0].url, "https://example.com/path");
+    }
+
+    #[test]
+    fn trailing_comma_stripped() {
+        let e = extract("at https://example.com/a, and");
+        assert_eq!(e.links[0].url, "https://example.com/a");
+    }
+
+    // ── is_valid_url ──
+
+    #[test]
+    fn valid_https() {
+        assert!(is_valid_url("https://example.com"));
+    }
+
+    #[test]
+    fn valid_http() {
+        assert!(is_valid_url("http://example.com/path?q=1"));
+    }
+
+    #[test]
+    fn valid_mailto() {
+        assert!(is_valid_url("mailto:user@example.com"));
+    }
+
+    #[test]
+    fn rejects_no_scheme() {
+        assert!(!is_valid_url("example.com"));
+    }
+
+    #[test]
+    fn rejects_ellipsis() {
+        assert!(!is_valid_url("https://\u{2026}"));
+    }
+
+    #[test]
+    fn rejects_backtick() {
+        assert!(!is_valid_url("https://example.com/`path`"));
+    }
+
+    #[test]
+    fn rejects_braces() {
+        assert!(!is_valid_url("https://example.com/{id}"));
+    }
+
+    #[test]
+    fn rejects_no_dot() {
+        assert!(!is_valid_url("https://localhost"));
+    }
+
+    #[test]
+    fn rejects_short_tld() {
+        assert!(!is_valid_url("https://example.x"));
+    }
+
+    #[test]
+    fn rejects_numeric_tld() {
+        assert!(!is_valid_url("https://192.168.1.1"));
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(!is_valid_url(""));
+    }
+
+    #[test]
+    fn accepts_port() {
+        assert!(is_valid_url("https://example.com:8080/path"));
+    }
+
+    #[test]
+    fn rejects_leading_dot_host() {
+        assert!(!is_valid_url("https://.example.com"));
+    }
+
+    // ── is_valid_host ──
+
+    #[test]
+    fn valid_host() {
+        assert!(is_valid_host("example.com"));
+    }
+
+    #[test]
+    fn valid_subdomain() {
+        assert!(is_valid_host("sub.example.co.uk"));
+    }
+
+    #[test]
+    fn rejects_short_host() {
+        assert!(!is_valid_host("a.b"));
+    }
+
+    #[test]
+    fn rejects_trailing_dot() {
+        assert!(!is_valid_host("example."));
+    }
+
+    // ── friendly_label ──
+
+    #[test]
+    fn label_strips_scheme_and_www() {
+        assert_eq!(friendly_label("https://www.example.com/path"), "(example.com link)");
+    }
+
+    #[test]
+    fn label_keeps_subdomain() {
+        assert_eq!(friendly_label("https://docs.rust-lang.org"), "(docs.rust-lang.org link)");
+    }
+
+    // ── parse_md_link ──
+
+    #[test]
+    fn md_link_basic() {
+        let r = parse_md_link("[text](https://example.com)");
+        assert!(r.is_some());
+        let (label, url, consumed) = r.unwrap();
+        assert_eq!(label, "text");
+        assert_eq!(url, "https://example.com");
+        assert_eq!(consumed, 27);
+    }
+
+    #[test]
+    fn md_link_empty_label_rejected() {
+        assert!(parse_md_link("[](https://example.com)").is_none());
+    }
+
+    #[test]
+    fn md_link_no_scheme_rejected() {
+        assert!(parse_md_link("[text](example.com)").is_none());
+    }
+
+    #[test]
+    fn md_link_mailto() {
+        let r = parse_md_link("[email](mailto:a@b.com)");
+        assert!(r.is_some());
+    }
+
+    // ── parse_bare_url ──
+
+    #[test]
+    fn bare_url_basic() {
+        let r = parse_bare_url("https://example.com/path rest");
+        assert!(r.is_some());
+        let (url, len) = r.unwrap();
+        assert_eq!(url, "https://example.com/path");
+        assert_eq!(len, 24);
+    }
+
+    #[test]
+    fn bare_url_stops_at_whitespace() {
+        let r = parse_bare_url("https://a.com next").unwrap();
+        assert_eq!(r.0, "https://a.com");
+    }
+
+    #[test]
+    fn bare_url_stops_at_paren() {
+        let r = parse_bare_url("https://a.com)next").unwrap();
+        assert_eq!(r.0, "https://a.com");
+    }
+
+    // ── UTF-8 ──
+
+    #[test]
+    fn utf8_in_text_preserved() {
+        let e = extract("café https://example.com résumé");
+        assert!(e.text.starts_with("café"));
+        assert!(e.text.contains("résumé"));
+        assert_eq!(e.links.len(), 1);
+    }
+}

@@ -14,6 +14,7 @@ const pinBtn = document.getElementById("pin-btn");
 const pauseIcon = document.getElementById("pause-icon");
 const playIcon = document.getElementById("play-icon");
 const linksEl = document.getElementById("links");
+const codeBlocksEl = document.getElementById("code-blocks");
 const historyBtn = document.getElementById("history-btn");
 const historyPanel = document.getElementById("history-panel");
 const historyList = document.getElementById("history-list");
@@ -36,6 +37,7 @@ let expandedSize = { ...SIZE_COLLAPSED };
 let currentSpokenText = "";
 let currentOriginalText = "";
 let currentSessionId = null;
+let currentEntryId = null;
 let selectedEntry = null;
 const replayBtn = document.getElementById("replay-btn");
 
@@ -102,6 +104,57 @@ function renderLinks(list) {
     more.className = "link-more";
     more.textContent = `+${list.length - MAX_CHIPS} more`;
     linksEl.appendChild(more);
+  }
+}
+
+function renderCodeBlocks(blocks) {
+  codeBlocksEl.innerHTML = "";
+  if (!blocks || blocks.length === 0) {
+    codeBlocksEl.hidden = true;
+    return;
+  }
+  codeBlocksEl.hidden = false;
+  for (const b of blocks) {
+    const wrap = document.createElement("div");
+    wrap.className = "code-block";
+
+    const head = document.createElement("div");
+    head.className = "code-block-head";
+
+    const lang = document.createElement("span");
+    lang.className = "code-block-lang";
+    lang.textContent = b.language || "code";
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "code-block-copy";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(b.code);
+        copy.textContent = "Copied";
+        copy.classList.add("copied");
+        setTimeout(() => {
+          copy.textContent = "Copy";
+          copy.classList.remove("copied");
+        }, 1200);
+      } catch (e) {
+        console.error("clipboard write failed", e);
+      }
+    });
+
+    head.appendChild(lang);
+    head.appendChild(copy);
+
+    const body = document.createElement("pre");
+    body.className = "code-block-body";
+    const codeEl = document.createElement("code");
+    codeEl.textContent = b.code;
+    body.appendChild(codeEl);
+
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    codeBlocksEl.appendChild(wrap);
   }
 }
 
@@ -217,11 +270,10 @@ event.listen("voice:start", (e) => {
   currentSpokenText = text;
   currentOriginalText = original;
   currentSessionId = session && session.id ? session.id : null;
+  currentEntryId = e.payload?.id ?? null;
   selectedEntry = null;
   replayBtn.hidden = true;
-  document.querySelectorAll(".history-entry.selected").forEach(
-    (el) => el.classList.remove("selected"),
-  );
+  applyCurrentHighlight();
   setOriginalMode(false);
 
   const browserSpeech = e.payload?.browser_speech ?? false;
@@ -233,6 +285,7 @@ event.listen("voice:start", (e) => {
     startHighlight(text, list);
   }
   renderLinks(links);
+  renderCodeBlocks(e.payload?.code_blocks ?? []);
 });
 
 function setOriginalMode(on) {
@@ -304,6 +357,7 @@ event.listen("voice:end", async () => {
       wordSpans = [];
       words = [];
       renderLinks([]);
+      renderCodeBlocks([]);
       setPaused(false);
       try { await popupWindow.hide(); } catch {}
       dismissTimer = null;
@@ -357,6 +411,22 @@ historyBtn.addEventListener("click", () => toggleHistory());
 historyBtn.classList.add("active");
 loadHistory();
 originalBtn.addEventListener("click", () => setOriginalMode(!showingOriginal));
+
+const copyBtn = document.getElementById("copy-btn");
+async function copyCurrentMessage() {
+  const text = showingOriginal
+    ? currentOriginalText || currentSpokenText
+    : currentSpokenText || currentOriginalText;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyBtn.classList.add("copied");
+    setTimeout(() => copyBtn.classList.remove("copied"), 900);
+  } catch (e) {
+    console.error("clipboard write failed", e);
+  }
+}
+copyBtn.addEventListener("click", copyCurrentMessage);
 
 const replyInput = document.getElementById("reply-input");
 const replySend = document.getElementById("reply-send");
@@ -590,6 +660,7 @@ function startBrowserSpeech(text, voiceName, rate) {
         wordSpans = [];
         words = [];
         renderLinks([]);
+      renderCodeBlocks([]);
         setPaused(false);
         try { await popupWindow.hide(); } catch {}
         dismissTimer = null;
@@ -622,7 +693,8 @@ async function setMinimized(on) {
   try {
     if (on) {
       const sz = await popupWindow.innerSize();
-      expandedSize = { w: sz.width, h: sz.height };
+      const scale = await popupWindow.scaleFactor();
+      expandedSize = { w: sz.width / scale, h: sz.height / scale };
       await popupWindow.setSize(new LogicalSize(SIZE_ORB.w, SIZE_ORB.h));
     } else {
       await popupWindow.setSize(
@@ -672,6 +744,8 @@ function formatTime(ms) {
 function renderHistoryEntry(entry) {
   const li = document.createElement("li");
   li.className = "history-entry";
+  li.dataset.entryId = entry.id;
+  if (entry.id === currentEntryId) li.classList.add("selected");
   li.style.cursor = "pointer";
   li.addEventListener("click", (e) => {
     if (e.target.closest(".delete-entry")) return;
@@ -697,6 +771,7 @@ function renderHistoryEntry(entry) {
         replayBtn.hidden = true;
         textEl.textContent = "";
         renderLinks([]);
+      renderCodeBlocks([]);
       }
     } catch (err) {
       console.error("delete_history_entry failed", err);
@@ -715,11 +790,8 @@ function renderHistoryEntry(entry) {
 }
 
 function selectHistoryEntry(entry, el) {
-  document.querySelectorAll(".history-entry.selected").forEach(
-    (e) => e.classList.remove("selected"),
-  );
-  if (el) el.classList.add("selected");
   selectedEntry = entry;
+  currentEntryId = entry.id;
   currentSpokenText = entry.spoken || "";
   currentOriginalText = entry.original || "";
   currentSessionId = entry.session?.id || null;
@@ -727,7 +799,20 @@ function selectHistoryEntry(entry, el) {
   setOriginalMode(false);
   textEl.textContent = currentSpokenText;
   renderLinks(entry.links || []);
+  renderCodeBlocks(entry.code_blocks || []);
   replayBtn.hidden = false;
+  applyCurrentHighlight();
+}
+
+function applyCurrentHighlight() {
+  document.querySelectorAll(".history-entry.selected").forEach(
+    (el) => el.classList.remove("selected"),
+  );
+  if (!currentEntryId) return;
+  const el = document.querySelector(
+    `.history-entry[data-entry-id="${CSS.escape(currentEntryId)}"]`,
+  );
+  if (el) el.classList.add("selected");
 }
 
 replayBtn.addEventListener("click", async () => {
@@ -739,26 +824,63 @@ replayBtn.addEventListener("click", async () => {
   }
 });
 
+let historyQuery = "";
+let cachedHistory = [];
+
+function matchesQuery(entry, q) {
+  if (!q) return true;
+  const hay = (
+    (entry.spoken || "") + "\n" +
+    (entry.original || "") + "\n" +
+    (entry.session?.label || "")
+  ).toLowerCase();
+  return hay.includes(q);
+}
+
 async function loadHistory() {
   try {
-    const entries = await core.invoke("get_history");
-    historyList.innerHTML = "";
-    if (!entries || entries.length === 0) {
-      historyEmpty.hidden = false;
-      return;
-    }
-    historyEmpty.hidden = true;
-    if (historyViewMode === "conversations") {
-      renderConversationView(entries);
-    } else {
-      for (const e of entries) {
-        historyList.appendChild(renderHistoryEntry(e));
-      }
-    }
+    cachedHistory = (await core.invoke("get_history")) || [];
+    renderHistory();
   } catch (e) {
     console.error("get_history failed", e);
   }
 }
+
+function renderHistory() {
+  historyList.innerHTML = "";
+  const q = historyQuery.trim().toLowerCase();
+  const filtered = q
+    ? cachedHistory.filter((e) => matchesQuery(e, q))
+    : cachedHistory;
+  if (filtered.length === 0) {
+    historyEmpty.hidden = false;
+    historyEmpty.textContent = q ? "No matches." : "No messages yet.";
+    return;
+  }
+  historyEmpty.hidden = true;
+  if (historyViewMode === "conversations") {
+    renderConversationView(filtered);
+  } else {
+    for (const e of filtered) {
+      historyList.appendChild(renderHistoryEntry(e));
+    }
+  }
+}
+
+const historySearchInput = document.getElementById("history-search");
+historySearchInput.addEventListener("input", () => {
+  historyQuery = historySearchInput.value;
+  renderHistory();
+});
+historySearchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && historySearchInput.value) {
+    e.preventDefault();
+    e.stopPropagation();
+    historySearchInput.value = "";
+    historyQuery = "";
+    renderHistory();
+  }
+});
 
 function groupBySession(entries) {
   const groups = new Map();
@@ -832,6 +954,8 @@ async function toggleHistory(force) {
   const next = typeof force === "boolean" ? force : !historyOpen;
   historyOpen = next;
   historyPanel.hidden = !next;
+  const resizerEl = document.getElementById("history-resizer");
+  if (resizerEl) resizerEl.hidden = !next;
   historyBtn.classList.toggle("active", next);
   if (next) await loadHistory();
 }
@@ -922,5 +1046,8 @@ document.addEventListener("keydown", (e) => {
   } else if (e.code === "KeyM") {
     e.preventDefault();
     setMinimized(!minimized);
+  } else if (e.code === "KeyC" && !e.metaKey && !e.ctrlKey) {
+    e.preventDefault();
+    copyCurrentMessage();
   }
 });

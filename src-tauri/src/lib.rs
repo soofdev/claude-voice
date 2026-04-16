@@ -1,3 +1,4 @@
+mod code_extract;
 mod history;
 mod link_extract;
 mod server;
@@ -20,8 +21,8 @@ use tauri::{
 };
 use tts::TtsEngine;
 
-const POPUP_WIDTH: f64 = 380.0;
-const POPUP_HEIGHT: f64 = 560.0;
+const POPUP_WIDTH: f64 = 680.0;
+const POPUP_HEIGHT: f64 = 620.0;
 const POPUP_MIN_HEIGHT: f64 = 240.0;
 const POPUP_MARGIN_RIGHT: f64 = 12.0;
 const POPUP_MARGIN_TOP: f64 = 32.0;
@@ -538,6 +539,17 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    toggle_popup_visibility(app);
+                })
+                .build(),
+        )
         .manage(settings_store.clone())
         .manage(history_store.clone())
         .manage(sessions_store.clone())
@@ -595,13 +607,14 @@ pub fn run() {
             .build()?;
 
             let saved_cfg = settings_store.get();
-            if let (Some(x), Some(y)) = (saved_cfg.popup_x, saved_cfg.popup_y) {
-                let _ = popup.set_position(LogicalPosition::new(x, y));
-            } else {
-                position_popup(&popup);
-            }
-            if let (Some(w), Some(h)) = (saved_cfg.popup_width, saved_cfg.popup_height) {
-                let _ = popup.set_size(LogicalSize::new(w.max(240.0), h.max(POPUP_MIN_HEIGHT)));
+            let w = saved_cfg.popup_width.unwrap_or(POPUP_WIDTH).max(240.0);
+            let h = saved_cfg.popup_height.unwrap_or(POPUP_HEIGHT).max(POPUP_MIN_HEIGHT);
+            let _ = popup.set_size(LogicalSize::new(w, h));
+            match saved_cfg.popup_x.zip(saved_cfg.popup_y) {
+                Some((x, y)) if position_on_any_monitor(&popup, x, y, w, h) => {
+                    let _ = popup.set_position(LogicalPosition::new(x, y));
+                }
+                _ => position_popup(&popup),
             }
             #[cfg(target_os = "macos")]
             {
@@ -666,6 +679,13 @@ pub fn run() {
                 initial.pin_popup,
                 None::<&str>,
             )?;
+            let reset_popup_item = MenuItem::with_id(
+                &handle,
+                "reset_popup_position",
+                "Reset Popup Position",
+                true,
+                None::<&str>,
+            )?;
             let sessions_submenu = Submenu::with_id_and_items(
                 &handle,
                 "sessions_submenu",
@@ -690,6 +710,7 @@ pub fn run() {
                     &stop_item,
                     &PredefinedMenuItem::separator(&handle)?,
                     &pin_item,
+                    &reset_popup_item,
                     &sessions_submenu,
                     &settings_item,
                     &PredefinedMenuItem::separator(&handle)?,
@@ -746,6 +767,13 @@ pub fn run() {
                     "toggle_pause" => {
                         let tts = app.state::<Arc<TtsEngine>>();
                         tts.toggle_pause();
+                    }
+                    "reset_popup_position" => {
+                        if let Some(win) = app.get_webview_window("popup") {
+                            position_popup(&win);
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
                     }
                     "toggle_pin_popup" => {
                         let store = app.state::<Arc<SettingsStore>>();
@@ -805,6 +833,17 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            {
+                use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+                let shortcut = Shortcut::new(
+                    Some(Modifiers::SUPER | Modifiers::SHIFT),
+                    Code::KeyV,
+                );
+                if let Err(e) = app.global_shortcut().register(shortcut) {
+                    eprintln!("[claude-voice] global shortcut register failed: {e}");
+                }
+            }
 
             let state_for_server = AppState {
                 tts: tts.clone(),
@@ -912,6 +951,54 @@ fn persist_popup_geometry(win: &tauri::Window) {
     cfg.popup_x = Some(pos.x as f64 / scale);
     cfg.popup_y = Some(pos.y as f64 / scale);
     let _ = store.update(cfg);
+}
+
+fn toggle_popup_visibility(app: &tauri::AppHandle) {
+    let Some(win) = app.get_webview_window("popup") else {
+        return;
+    };
+    let visible = win.is_visible().unwrap_or(false);
+    if visible {
+        let _ = win.hide();
+    } else {
+        let mut on_screen = false;
+        if let (Ok(pos), Ok(size), Ok(scale)) =
+            (win.outer_position(), win.outer_size(), win.scale_factor())
+        {
+            let x = pos.x as f64 / scale;
+            let y = pos.y as f64 / scale;
+            let w = size.width as f64 / scale;
+            let h = size.height as f64 / scale;
+            on_screen = position_on_any_monitor(&win, x, y, w, h);
+        }
+        if !on_screen {
+            position_popup(&win);
+        }
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+fn position_on_any_monitor(popup: &tauri::WebviewWindow, x: f64, y: f64, w: f64, h: f64) -> bool {
+    let Ok(monitors) = popup.available_monitors() else {
+        return false;
+    };
+    const VISIBLE_MARGIN: f64 = 80.0;
+    for m in monitors {
+        let scale = m.scale_factor();
+        let pos = m.position();
+        let size = m.size();
+        let mx = pos.x as f64 / scale;
+        let my = pos.y as f64 / scale;
+        let mw = size.width as f64 / scale;
+        let mh = size.height as f64 / scale;
+        let overlap_x = (x + w).min(mx + mw) - x.max(mx);
+        let overlap_y = (y + h).min(my + mh) - y.max(my);
+        if overlap_x >= VISIBLE_MARGIN && overlap_y >= VISIBLE_MARGIN {
+            return true;
+        }
+    }
+    false
 }
 
 fn position_popup(popup: &tauri::WebviewWindow) {
