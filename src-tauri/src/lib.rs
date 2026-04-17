@@ -736,10 +736,9 @@ pub fn run() {
                 }
             });
 
-            let icon = app
-                .default_window_icon()
-                .cloned()
-                .ok_or("no default icon")?;
+            let icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/tray.png"
+            ))?;
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
