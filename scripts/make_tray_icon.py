@@ -5,6 +5,9 @@ RGB channels and uses alpha as a mask. So this image is all-white RGB
 with a carefully shaped alpha: a solid disc in the middle, wrapped in a
 visible alpha halo so it reads as a glowing orb even in monochrome.
 
+Also emits resized copies into chrome-extension/icons/ so the Chrome
+extension's toolbar icon matches the app's menu bar icon.
+
 Run: python3 scripts/make_tray_icon.py
 """
 from PIL import Image, ImageFilter
@@ -13,9 +16,11 @@ import os
 
 SIZE = 88  # @2x of a ~22pt tray icon
 OUT = "src-tauri/icons/tray.png"
+EXT_DIR = "chrome-extension/icons"
+EXT_SIZES = (32, 128)
 
 
-def build():
+def build_base():
     img = Image.new("RGBA", (SIZE, SIZE), (255, 255, 255, 0))
     px = img.load()
     cx = cy = SIZE / 2
@@ -45,11 +50,24 @@ def build():
             px[x, y] = (255, 255, 255, a)
 
     # Light blur to soften both edges.
-    img = img.filter(ImageFilter.GaussianBlur(1.0))
+    return img.filter(ImageFilter.GaussianBlur(1.0))
+
+
+def build():
+    img = build_base()
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     img.save(OUT, "PNG")
     print(f"wrote {OUT}  ({SIZE}x{SIZE})")
+
+    # Chrome extension copies — same visual, resized for the toolbar and
+    # extension-management surfaces.
+    os.makedirs(EXT_DIR, exist_ok=True)
+    for size in EXT_SIZES:
+        resized = img.resize((size, size), Image.LANCZOS)
+        path = os.path.join(EXT_DIR, f"icon{size}.png")
+        resized.save(path, "PNG")
+        print(f"wrote {path}  ({size}x{size})")
 
 
 if __name__ == "__main__":
