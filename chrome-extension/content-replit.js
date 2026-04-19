@@ -70,11 +70,37 @@ function deriveSessionLabel() {
 let enabled = true;
 let finalOnly = false;
 let seenResponses = new WeakSet();
+// Content-hash dedup — Replit re-mounts the timeline when you switch
+// between tasks, so DOM identity (seenResponses) isn't enough. We also
+// remember the hashes of recently-fired texts and skip repeats.
+const firedTextHashes = new Set();
+const firedHashOrder = [];
+const MAX_FIRED_HASHES = 100;
 let settleTimer = null;
 let lastFiredAt = 0;
 let firstPostponedAt = 0;
 let warmingUp = true;
 let warmupIdleTimer = null;
+
+function hashText(s) {
+  // djb2 — plenty for in-memory dedup, no crypto needed.
+  const norm = s.replace(/\s+/g, " ").trim();
+  let h = 5381;
+  for (let i = 0; i < norm.length; i++) {
+    h = ((h * 33) ^ norm.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36) + ":" + norm.length;
+}
+
+function rememberFired(hash) {
+  if (firedTextHashes.has(hash)) return;
+  firedTextHashes.add(hash);
+  firedHashOrder.push(hash);
+  if (firedHashOrder.length > MAX_FIRED_HASHES) {
+    const evicted = firedHashOrder.shift();
+    firedTextHashes.delete(evicted);
+  }
+}
 
 function scheduleWarmupEnd() {
   if (!warmingUp) return;
@@ -220,7 +246,20 @@ async function fireUnseenResponses() {
 
   const combined = parts.join("\n\n").trim();
   if (!combined) return;
+
+  // Content-hash dedup — Replit re-mounts the timeline when you switch
+  // between tasks, so the same message text can show up on a brand-new
+  // DOM node that our WeakSet hasn't seen. Check the hash before firing.
+  const hash = hashText(combined);
+  if (firedTextHashes.has(hash)) {
+    log("skip — text already fired", { hash, chars: combined.length });
+    return;
+  }
+
   lastFiredAt = now;
+  // Mark the hash before the async send — otherwise a rapid re-mount
+  // could race and both copies would fire before either sees the hash.
+  rememberFired(hash);
 
   const payload = {
     sessionId: deriveSessionId(),
@@ -231,6 +270,7 @@ async function fireUnseenResponses() {
   log("firing agent response", {
     chars: combined.length,
     count: candidates.length,
+    hash,
   });
   try {
     const resp = await chrome.runtime.sendMessage({

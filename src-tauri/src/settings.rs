@@ -62,6 +62,11 @@ pub struct Settings {
     pub summary_threshold_chars: u32,
     #[serde(default = "default_summary_brevity")]
     pub summary_brevity: String,
+    // When true, recent spoken messages from the same session (up to 5
+    // within the last 30 minutes) are passed to the summarizer as
+    // context, and it's instructed to skip anything already covered.
+    #[serde(default)]
+    pub avoid_repetition: bool,
 }
 
 fn default_true() -> bool {
@@ -137,6 +142,7 @@ impl Default for Settings {
             summary_model: default_summary_model(),
             summary_threshold_chars: default_summary_threshold(),
             summary_brevity: default_summary_brevity(),
+            avoid_repetition: false,
         }
     }
 }
