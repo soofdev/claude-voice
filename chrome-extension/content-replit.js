@@ -325,6 +325,18 @@ function start() {
     existingResponses: findAllAgentResponses().length,
   });
 
+  // Chrome freezes idle tabs after a few minutes in the background; JS
+  // execution pauses. If the agent finished streaming while the tab was
+  // frozen, our debounce timer may have fired mid-stream (or been
+  // dropped) and no further DOM activity would kick us on unfreeze.
+  // When the tab comes back to the foreground, force a re-check.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (warmingUp) return;
+    log("tab visible — re-checking for unseen responses");
+    scheduleSettle();
+  });
+
   startReplyPoller();
 }
 
