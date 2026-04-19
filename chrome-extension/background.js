@@ -39,6 +39,20 @@ async function pingServer() {
   }
 }
 
+async function pollPending(sessionId) {
+  try {
+    const base = await getServer();
+    const resp = await fetch(
+      `${base}/bridge/pending/${encodeURIComponent(sessionId)}`,
+    );
+    if (!resp.ok) return { ok: false, status: resp.status, items: [] };
+    const items = await resp.json();
+    return { ok: true, items: Array.isArray(items) ? items : [] };
+  } catch (e) {
+    return { ok: false, error: String(e), items: [] };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "bridge:speak") {
     speak(msg.payload)
@@ -50,6 +64,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     pingServer()
       .then(sendResponse)
       .catch((e) => sendResponse({ ok: false, error: String(e) }));
+    return true;
+  }
+  if (msg?.type === "bridge:pending-poll") {
+    pollPending(msg.sessionId)
+      .then(sendResponse)
+      .catch((e) =>
+        sendResponse({ ok: false, error: String(e), items: [] }),
+      );
     return true;
   }
 });

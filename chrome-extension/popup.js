@@ -1,5 +1,6 @@
 const enabledEl = document.getElementById("enabled");
 const debugEl = document.getElementById("debug");
+const finalOnlyEl = document.getElementById("finalOnly");
 const hostEl = document.getElementById("host");
 const portEl = document.getElementById("port");
 const statusEl = document.getElementById("status");
@@ -9,6 +10,7 @@ const testBtn = document.getElementById("test");
 const DEFAULTS = {
   enabled: true,
   debug: false,
+  finalOnly: false,
   host: "127.0.0.1",
   port: 8765,
 };
@@ -17,6 +19,7 @@ async function load() {
   const v = await chrome.storage.sync.get(DEFAULTS);
   enabledEl.checked = v.enabled;
   debugEl.checked = v.debug;
+  finalOnlyEl.checked = v.finalOnly;
   hostEl.value = v.host;
   portEl.value = v.port;
   await refreshStatus();
@@ -26,6 +29,7 @@ async function save() {
   const v = {
     enabled: enabledEl.checked,
     debug: debugEl.checked,
+    finalOnly: finalOnlyEl.checked,
     host: hostEl.value.trim() || DEFAULTS.host,
     port: parseInt(portEl.value, 10) || DEFAULTS.port,
   };
@@ -75,6 +79,8 @@ async function sendTest() {
 
 saveBtn.addEventListener("click", save);
 testBtn.addEventListener("click", sendTest);
-[enabledEl, debugEl].forEach((el) => el.addEventListener("change", save));
+[enabledEl, debugEl, finalOnlyEl].forEach((el) =>
+  el.addEventListener("change", save),
+);
 
 load();
