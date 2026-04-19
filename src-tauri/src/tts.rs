@@ -61,6 +61,7 @@ pub struct TtsEngine {
 
 enum QueueItem {
     Speak {
+        id: String,
         text: String,
         cfg: Settings,
         session: Option<SessionTag>,
@@ -120,7 +121,31 @@ impl TtsEngine {
         if text.trim().is_empty() {
             return;
         }
-        self.enqueue(QueueItem::Speak { text, cfg, session });
+        // Allocate the id now and drop a placeholder into history so the
+        // entry shows up immediately as pending, even if a prior message is
+        // still playing. The runner will fill in the real spoken/audio data
+        // via HistoryStore::update once it gets to process this item.
+        let id = format!("{}", now_ms());
+        if let Some(store) = self.inner.history.get() {
+            store.append(HistoryEntry {
+                id: id.clone(),
+                timestamp_ms: now_ms(),
+                original: text.clone(),
+                spoken: String::new(),
+                links: Vec::new(),
+                code_blocks: Vec::new(),
+                words: Vec::new(),
+                audio_path: None,
+                backend: cfg.backend.clone(),
+                session: session.clone(),
+                pending: true,
+            });
+        }
+        if let Some(app) = self.app.get() {
+            use tauri::Emitter;
+            let _ = app.emit("history:changed", ());
+        }
+        self.enqueue(QueueItem::Speak { id, text, cfg, session });
     }
 
     pub fn replay(&self, entry: HistoryEntry, cfg: Settings) {
@@ -252,8 +277,8 @@ async fn runner(inner: Arc<TtsInner>, app: Option<AppHandle>) {
         };
         let Some(item) = next else { break; };
         match item {
-            QueueItem::Speak { text, cfg, session } => {
-                run_pipeline(inner.clone(), app.clone(), text, cfg, session).await;
+            QueueItem::Speak { id, text, cfg, session } => {
+                run_pipeline(inner.clone(), app.clone(), id, text, cfg, session).await;
             }
             QueueItem::Replay { entry, cfg } => {
                 replay_pipeline(inner.clone(), app.clone(), entry, cfg).await;
@@ -265,6 +290,7 @@ async fn runner(inner: Arc<TtsInner>, app: Option<AppHandle>) {
 async fn run_pipeline(
     inner: Arc<TtsInner>,
     app: Option<AppHandle>,
+    id: String,
     original: String,
     cfg: Settings,
     session: Option<SessionTag>,
@@ -283,6 +309,16 @@ async fn run_pipeline(
     let code_blocks = code_extract::extract(&original);
     let cleaned = clean_for_speech(&extracted.text);
     if cleaned.trim().is_empty() {
+        // Bail early — but first drop the pending placeholder we inserted
+        // in speak() so the sidebar doesn't show a message that will never
+        // play.
+        if let Some(store) = inner.history.get() {
+            store.remove_entry(&id);
+            if let Some(app) = &app {
+                use tauri::Emitter;
+                let _ = app.emit("history:changed", ());
+            }
+        }
         return;
     }
 
@@ -307,7 +343,6 @@ async fn run_pipeline(
     let spoken = maybe_prepend_session_prefix(&inner, &summarized, &session, &cfg);
 
     let ts = now_ms();
-    let id = format!("{}", ts);
     let use_elevenlabs = cfg.backend == "elevenlabs" && !cfg.elevenlabs_api_key.is_empty();
 
     let (audio_path, words) = if use_elevenlabs {
@@ -325,7 +360,9 @@ async fn run_pipeline(
     };
 
     if let Some(store) = inner.history.get() {
-        store.append(HistoryEntry {
+        // Replace the pending placeholder inserted by speak() with the
+        // fully-processed entry.
+        store.update(HistoryEntry {
             id: id.clone(),
             timestamp_ms: ts,
             original: original.clone(),
@@ -336,6 +373,7 @@ async fn run_pipeline(
             audio_path: audio_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             backend: cfg.backend.clone(),
             session: session.clone(),
+            pending: false,
         });
         if let Some(app) = &app {
             let _ = app.emit("history:changed", ());

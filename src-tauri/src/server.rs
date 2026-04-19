@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::bridge::BridgeQueue;
 use crate::history::now_ms;
 use crate::sessions::SessionsStore;
 use crate::settings::SettingsStore;
@@ -20,6 +21,7 @@ pub struct AppState {
     pub tts: Arc<TtsEngine>,
     pub settings: Arc<SettingsStore>,
     pub sessions: Arc<SessionsStore>,
+    pub bridge: Arc<BridgeQueue>,
     pub app: tauri::AppHandle,
 }
 
@@ -62,7 +64,15 @@ pub fn router(state: AppState) -> Router {
         .route("/resume", post(resume))
         .route("/toggle", post(toggle))
         .route("/hook/stop", post(hook_stop))
+        .route("/bridge/pending/:sid", get(bridge_pending))
         .with_state(state)
+}
+
+async fn bridge_pending(
+    State(s): State<AppState>,
+    Path(sid): Path<String>,
+) -> Json<Vec<String>> {
+    Json(s.bridge.drain(&sid))
 }
 
 async fn root() -> &'static str {

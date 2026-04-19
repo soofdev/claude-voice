@@ -1,3 +1,4 @@
+mod bridge;
 mod code_extract;
 mod history;
 mod link_extract;
@@ -10,6 +11,7 @@ mod tts;
 
 use std::sync::Arc;
 
+use bridge::BridgeQueue;
 use history::{HistoryEntry, HistoryStore};
 use server::AppState;
 use sessions::{SessionInfo, SessionsStore};
@@ -261,9 +263,19 @@ fn send_to_terminal(
     text: String,
     session_id: Option<String>,
     sessions: tauri::State<Arc<SessionsStore>>,
+    bridge: tauri::State<Arc<BridgeQueue>>,
 ) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("empty prompt".to_string());
+    }
+    // Web-based agent sessions (Replit today, more later) are served by the
+    // Chrome extension, not a local TTY. Queue the text and let the
+    // extension inject it into the agent's input on its next poll.
+    if let Some(sid) = session_id.as_deref() {
+        if bridge::is_bridge_session(sid) {
+            bridge.enqueue(sid, text);
+            return Ok("Replit (via bridge)".to_string());
+        }
     }
     let tty = session_id
         .as_deref()
@@ -531,6 +543,7 @@ pub fn run() {
     let settings_store = Arc::new(SettingsStore::new());
     let history_store = Arc::new(HistoryStore::new());
     let sessions_store = Arc::new(SessionsStore::new());
+    let bridge_queue = Arc::new(BridgeQueue::new());
     let tts = Arc::new(TtsEngine::new());
     tts.set_history(history_store.clone());
 
@@ -553,6 +566,7 @@ pub fn run() {
         .manage(settings_store.clone())
         .manage(history_store.clone())
         .manage(sessions_store.clone())
+        .manage(bridge_queue.clone())
         .manage(tts.clone())
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -736,10 +750,9 @@ pub fn run() {
                 }
             });
 
-            let icon = app
-                .default_window_icon()
-                .cloned()
-                .ok_or("no default icon")?;
+            let icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/tray.png"
+            ))?;
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -849,6 +862,7 @@ pub fn run() {
                 tts: tts.clone(),
                 settings: settings_store.clone(),
                 sessions: sessions_store.clone(),
+                bridge: bridge_queue.clone(),
                 app: handle.clone(),
             };
             tauri::async_runtime::spawn(async move {

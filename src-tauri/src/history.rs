@@ -29,6 +29,11 @@ pub struct HistoryEntry {
     pub backend: String,
     #[serde(default)]
     pub session: Option<SessionTag>,
+    // True while the TTS pipeline is still summarizing/fetching audio for
+    // this message. The UI uses this to show a queued indicator and hide
+    // replay controls.
+    #[serde(default)]
+    pub pending: bool,
 }
 
 pub struct HistoryStore(Mutex<Vec<HistoryEntry>>);
@@ -63,6 +68,29 @@ impl HistoryStore {
         for e in evicted {
             delete_audio_of(&e);
         }
+        if let Err(e) = save(&snapshot) {
+            eprintln!("[claude-voice] history save failed: {e}");
+        }
+    }
+
+    /// Replace the entry with the matching id (or append if missing).
+    /// Used when a pending entry finishes processing.
+    pub fn update(&self, entry: HistoryEntry) {
+        let snapshot = {
+            let mut guard = self.0.lock().unwrap();
+            let mut found = false;
+            for e in guard.iter_mut() {
+                if e.id == entry.id {
+                    *e = entry.clone();
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                guard.push(entry);
+            }
+            guard.clone()
+        };
         if let Err(e) = save(&snapshot) {
             eprintln!("[claude-voice] history save failed: {e}");
         }

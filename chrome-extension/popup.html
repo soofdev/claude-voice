@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="card">
+      <div class="title">Claude Voice Bridge</div>
+
+      <label class="row">
+        <span>Enabled</span>
+        <input type="checkbox" id="enabled" />
+      </label>
+
+      <label class="row">
+        <span>Debug log</span>
+        <input type="checkbox" id="debug" />
+      </label>
+
+      <label class="row" title="Skip intermediate thought-process messages and only speak the final result after the agent finishes working.">
+        <span>Only read final message</span>
+        <input type="checkbox" id="finalOnly" />
+      </label>
+
+      <div class="section">
+        <div class="label">Server</div>
+        <div class="server-row">
+          <input id="host" type="text" placeholder="127.0.0.1" />
+          <span>:</span>
+          <input id="port" type="number" placeholder="8765" />
+        </div>
+      </div>
+
+      <div class="status" id="status">Checking…</div>
+
+      <div class="actions">
+        <button id="save">Save</button>
+        <button id="test">Test</button>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

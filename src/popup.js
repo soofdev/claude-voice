@@ -43,8 +43,10 @@ const replayBtn = document.getElementById("replay-btn");
 
 let paused = false;
 let pinned = false;
+let isPlaying = false;
 let dismissDelayMs = 1500;
 let dismissTimer = null;
+let dismissFadeTimer = null;
 let errorShowing = false;
 let rafId = null;
 let wordSpans = [];
@@ -241,6 +243,10 @@ event.listen("voice:waking", (e) => {
     clearTimeout(dismissTimer);
     dismissTimer = null;
   }
+  if (dismissFadeTimer) {
+    clearTimeout(dismissFadeTimer);
+    dismissFadeTimer = null;
+  }
   document.body.classList.remove("fading-out", "speaking");
   document.body.classList.add("waking");
   applySessionTheme(session);
@@ -257,9 +263,14 @@ event.listen("voice:start", (e) => {
   const links = e.payload?.links ?? [];
   const session = e.payload?.session ?? null;
   errorShowing = false;
+  isPlaying = true;
   if (dismissTimer) {
     clearTimeout(dismissTimer);
     dismissTimer = null;
+  }
+  if (dismissFadeTimer) {
+    clearTimeout(dismissFadeTimer);
+    dismissFadeTimer = null;
   }
   stopBrowserSpeech();
   document.body.classList.remove("fading-out", "waking");
@@ -337,6 +348,12 @@ function hexToRgba(hex, a) {
 }
 
 event.listen("voice:end", async () => {
+  isPlaying = false;
+  // Reset local paused state eagerly. The Rust side already cleared its
+  // paused flag on stop/end, so the UI shouldn't linger thinking we're
+  // paused (otherwise the next play-button click tries to toggle_pause
+  // on nothing instead of falling back to replay).
+  setPaused(false);
   if (errorShowing) return;
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   document.body.classList.remove("speaking", "waking");
@@ -347,11 +364,17 @@ event.listen("voice:end", async () => {
     titleEl.textContent = "Done (pinned)";
     return;
   }
+  // Two nested timers — outer waits the user-visible dismiss delay, inner
+  // runs the fade animation. Both must be cancellable from voice:start so
+  // a queued next message doesn't race with the hide.
   if (dismissTimer) clearTimeout(dismissTimer);
+  if (dismissFadeTimer) clearTimeout(dismissFadeTimer);
   const FADE_MS = 350;
   dismissTimer = setTimeout(async () => {
+    dismissTimer = null;
     document.body.classList.add("fading-out");
-    setTimeout(async () => {
+    dismissFadeTimer = setTimeout(async () => {
+      dismissFadeTimer = null;
       document.body.classList.remove("fading-out");
       textEl.textContent = "";
       wordSpans = [];
@@ -360,7 +383,6 @@ event.listen("voice:end", async () => {
       renderCodeBlocks([]);
       setPaused(false);
       try { await popupWindow.hide(); } catch {}
-      dismissTimer = null;
     }, FADE_MS);
   }, dismissDelayMs);
 });
@@ -389,7 +411,7 @@ event.listen("voice:error", async (e) => {
   }, 6000);
 });
 
-pauseBtn.addEventListener("click", () => {
+function handlePauseResume() {
   if (browserSpeechActive) {
     if (speechSynthesis.paused) {
       speechSynthesis.resume();
@@ -398,10 +420,22 @@ pauseBtn.addEventListener("click", () => {
       speechSynthesis.pause();
       setPaused(true);
     }
-  } else {
-    core.invoke("toggle_pause");
+    return;
   }
-});
+  if (isPlaying || paused) {
+    // Active playback: toggle pause/resume at the TTS engine.
+    core.invoke("toggle_pause");
+    return;
+  }
+  // Nothing is playing — the process ended (naturally or otherwise) while
+  // the user wasn't looking. Replay the currently-highlighted message so
+  // the play button always does something useful.
+  if (currentEntryId) {
+    core.invoke("replay_history", { id: currentEntryId });
+  }
+}
+
+pauseBtn.addEventListener("click", handlePauseResume);
 stopBtn.addEventListener("click", () => {
   stopBrowserSpeech();
   core.invoke("stop_speaking");
@@ -746,9 +780,11 @@ function renderHistoryEntry(entry) {
   li.className = "history-entry";
   li.dataset.entryId = entry.id;
   if (entry.id === currentEntryId) li.classList.add("selected");
+  if (entry.pending) li.classList.add("pending");
   li.style.cursor = "pointer";
   li.addEventListener("click", (e) => {
     if (e.target.closest(".delete-entry")) return;
+    if (entry.pending) return; // queued — not playable yet
     selectHistoryEntry(entry, li);
   });
 
@@ -756,7 +792,7 @@ function renderHistoryEntry(entry) {
   row.className = "row";
   const time = document.createElement("span");
   time.className = "time";
-  time.textContent = formatTime(entry.timestamp_ms);
+  time.textContent = entry.pending ? "Queued…" : formatTime(entry.timestamp_ms);
   const del = document.createElement("button");
   del.type = "button";
   del.className = "delete-entry";
@@ -845,6 +881,23 @@ async function loadHistory() {
     console.error("get_history failed", e);
   }
 }
+
+// Popup windows are pre-rendered hidden on app start; the first invoke
+// can race against Rust-side state readiness and return empty. Three
+// safeguards: a one-time retry, a focus listener, and a visibility-change
+// listener (the popup often appears without gaining focus when auto-shown
+// on a new message).
+popupWindow.onFocusChanged(({ payload: focused }) => {
+  if (focused && historyOpen) loadHistory();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && historyOpen) loadHistory();
+});
+
+setTimeout(() => {
+  if (historyOpen && cachedHistory.length === 0) loadHistory();
+}, 1000);
 
 function renderHistory() {
   historyList.innerHTML = "";
@@ -943,12 +996,19 @@ const viewToggleBtn = document.getElementById("history-view-toggle");
 const viewIconMessages = document.getElementById("view-icon-messages");
 const viewIconConversations = document.getElementById("view-icon-conversations");
 
+function updateViewToggleIcon() {
+  // Show the icon of the *other* mode — the one the button would switch to.
+  viewIconMessages.style.display = historyViewMode === "messages" ? "none" : "";
+  viewIconConversations.style.display =
+    historyViewMode === "conversations" ? "none" : "";
+}
+
 viewToggleBtn.addEventListener("click", () => {
   historyViewMode = historyViewMode === "messages" ? "conversations" : "messages";
-  viewIconMessages.style.display = historyViewMode === "messages" ? "" : "none";
-  viewIconConversations.style.display = historyViewMode === "conversations" ? "" : "none";
+  updateViewToggleIcon();
   loadHistory();
 });
+updateViewToggleIcon();
 
 async function toggleHistory(force) {
   const next = typeof force === "boolean" ? force : !historyOpen;
@@ -1030,7 +1090,7 @@ document.addEventListener("keydown", (e) => {
   if (inInput && e.code !== "Escape") return;
   if (e.code === "Space") {
     e.preventDefault();
-    core.invoke("toggle_pause");
+    handlePauseResume();
   } else if (e.code === "Escape") {
     e.preventDefault();
     if (pinned) {
