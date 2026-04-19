@@ -433,8 +433,12 @@ fn hook_command(store: tauri::State<Arc<SettingsStore>>) -> String {
 }
 
 fn build_hook_command(port: u16) -> String {
+    // Fire-and-forget: --max-time keeps us from hanging on a dead server,
+    // -o /dev/null drops the response body, and `|| true` guarantees a
+    // zero exit so Claude Code never reports "Failed with non-blocking
+    // status code" just because Claude Voice was restarting.
     format!(
-        "TTY=$(ps -o tty= -p $$ | tr -d ' '); (printf '{{\"tty\":\"/dev/%s\",' \"$TTY\"; cat | sed 's/^{{//') | curl -s -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @-"
+        "TTY=$(ps -o tty= -p $$ | tr -d ' '); (printf '{{\"tty\":\"/dev/%s\",' \"$TTY\"; cat | sed 's/^{{//') | curl -s --max-time 5 -o /dev/null -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @- || true"
     )
 }
 
