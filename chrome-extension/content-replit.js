@@ -333,30 +333,32 @@ function start() {
 // drain the queue, and type each reply into the Replit agent input.
 
 function findAgentInput() {
-  // Prefer a visible textarea whose placeholder hints at agent chat. Fall
-  // back to the last visible textarea, then any contenteditable. Replit's
-  // class names churn; these heuristics don't depend on them.
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   };
-  const textareas = Array.from(document.querySelectorAll("textarea")).filter(
-    visible,
+  // Replit's chat box is a CodeMirror 6 editor nested inside
+  // [data-cy="ai-prompt-input"]. The editable surface is a contenteditable
+  // with `class="cm-content"`.
+  const replitCM = document.querySelector(
+    '[data-cy="ai-prompt-input"] .cm-content[contenteditable="true"]',
   );
-  const agentPlaceholder =
-    /ask|message|reply|prompt|chat|type|anything|what|describe|send|make|iterate|build/i;
-  const hinted = textareas.find((el) =>
-    agentPlaceholder.test(el.placeholder || el.getAttribute("aria-label") || ""),
-  );
-  if (hinted) return { el: hinted, kind: "textarea" };
-  if (textareas.length > 0) {
-    return { el: textareas[textareas.length - 1], kind: "textarea" };
+  if (replitCM && visible(replitCM)) {
+    return { el: replitCM, kind: "codemirror" };
   }
+  // Generic contenteditable fallback (for other agent platforms).
   const editables = Array.from(
     document.querySelectorAll('[contenteditable="true"]'),
   ).filter(visible);
   if (editables.length > 0) {
     return { el: editables[editables.length - 1], kind: "editable" };
+  }
+  // Textarea fallback.
+  const textareas = Array.from(document.querySelectorAll("textarea")).filter(
+    visible,
+  );
+  if (textareas.length > 0) {
+    return { el: textareas[textareas.length - 1], kind: "textarea" };
   }
   return null;
 }
@@ -383,7 +385,24 @@ function dispatchEnter(el) {
   }
 }
 
+function findReplitSendButton() {
+  // Replit uses data-cy="ai-prompt-send" for the Send button (shown when
+  // the agent is idle) and data-cy="ai-prompt-stop" when mid-response.
+  // We only click the send variant.
+  return document.querySelector(
+    '[data-cy="ai-prompt-send"], [data-action="send"]',
+  );
+}
+
 function clickSendFallback(el) {
+  // Prefer Replit's stable send button if present.
+  const replit = findReplitSendButton();
+  if (replit && !replit.disabled) {
+    log("clicking Replit send button");
+    replit.click();
+    return;
+  }
+  // Otherwise, scan nearby buttons for a generic send/submit label.
   const form = el.closest("form");
   const scope = form || el.parentElement?.parentElement || document.body;
   const buttons = Array.from(scope.querySelectorAll("button"));
@@ -402,6 +421,21 @@ function clickSendFallback(el) {
   }
 }
 
+function pasteIntoCodeMirror(el, text) {
+  // CM6 ignores programmatic DOM edits — its DOMObserver only syncs state
+  // from real input/paste events. A synthetic ClipboardEvent with a
+  // DataTransfer flows through CM's actual paste handler, so its state
+  // updates and the placeholder clears.
+  const dt = new DataTransfer();
+  dt.setData("text/plain", text);
+  const ev = new ClipboardEvent("paste", {
+    clipboardData: dt,
+    bubbles: true,
+    cancelable: true,
+  });
+  el.dispatchEvent(ev);
+}
+
 function injectReply(text) {
   const found = findAgentInput();
   if (!found) {
@@ -410,25 +444,53 @@ function injectReply(text) {
   }
   const { el, kind } = found;
   el.focus();
+  // Place caret inside the editable first so paste/insert target is clear.
+  const sel = window.getSelection();
+  if (sel) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   if (kind === "textarea") {
     setNativeValue(el, text);
     el.dispatchEvent(new Event("input", { bubbles: true }));
+  } else if (kind === "codemirror") {
+    pasteIntoCodeMirror(el, text);
   } else {
-    document.execCommand("selectAll", false);
+    // Generic contenteditable
     document.execCommand("insertText", false, text);
   }
   log("injected reply", { chars: text.length, kind });
 
-  setTimeout(() => {
+  // Send button may be briefly disabled while the editor processes the
+  // paste. Poll for it (up to ~2s) before falling back to Enter.
+  let attempts = 0;
+  const maxAttempts = 20;
+  const trySend = () => {
+    attempts++;
+    const replitSend = findReplitSendButton();
+    if (replitSend && !replitSend.disabled) {
+      log("clicking Replit send button", { attempts });
+      replitSend.click();
+      return;
+    }
+    if (attempts < maxAttempts) {
+      setTimeout(trySend, 100);
+      return;
+    }
+    log("send button never enabled; falling back to Enter");
     dispatchEnter(el);
     setTimeout(() => {
       const stillThere =
         kind === "textarea"
           ? el.value === text
-          : (el.innerText || "").includes(text);
+          : (el.innerText || "").includes(text.slice(0, 20));
       if (stillThere) clickSendFallback(el);
     }, 200);
-  }, 30);
+  };
+  setTimeout(trySend, 100);
 }
 
 let replyPollTimer = null;

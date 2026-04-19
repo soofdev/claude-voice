@@ -911,6 +911,7 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
 }
 
 .history-entry .row {
@@ -972,6 +973,36 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
 .history-entry.selected {
   background: rgba(255, 255, 255, 0.1);
   border-color: var(--session-color, rgba(120, 170, 255, 0.5));
+}
+
+.history-entry.pending {
+  opacity: 0.55;
+  cursor: default;
+}
+.history-entry.pending .row .time {
+  font-style: italic;
+  color: var(--session-color, rgba(120, 170, 255, 0.9));
+}
+.history-entry.pending .preview {
+  color: #8a8a90;
+}
+.history-entry.pending::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--session-color, #78aaff);
+  box-shadow: 0 0 6px var(--session-color, #78aaff);
+  animation: pending-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pending-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
 #replay-btn {
