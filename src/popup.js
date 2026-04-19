@@ -846,6 +846,23 @@ async function loadHistory() {
   }
 }
 
+// Popup windows are pre-rendered hidden on app start; the first invoke
+// can race against Rust-side state readiness and return empty. Three
+// safeguards: a one-time retry, a focus listener, and a visibility-change
+// listener (the popup often appears without gaining focus when auto-shown
+// on a new message).
+popupWindow.onFocusChanged(({ payload: focused }) => {
+  if (focused && historyOpen) loadHistory();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && historyOpen) loadHistory();
+});
+
+setTimeout(() => {
+  if (historyOpen && cachedHistory.length === 0) loadHistory();
+}, 1000);
+
 function renderHistory() {
   historyList.innerHTML = "";
   const q = historyQuery.trim().toLowerCase();
@@ -943,12 +960,19 @@ const viewToggleBtn = document.getElementById("history-view-toggle");
 const viewIconMessages = document.getElementById("view-icon-messages");
 const viewIconConversations = document.getElementById("view-icon-conversations");
 
+function updateViewToggleIcon() {
+  // Show the icon of the *other* mode — the one the button would switch to.
+  viewIconMessages.style.display = historyViewMode === "messages" ? "none" : "";
+  viewIconConversations.style.display =
+    historyViewMode === "conversations" ? "none" : "";
+}
+
 viewToggleBtn.addEventListener("click", () => {
   historyViewMode = historyViewMode === "messages" ? "conversations" : "messages";
-  viewIconMessages.style.display = historyViewMode === "messages" ? "" : "none";
-  viewIconConversations.style.display = historyViewMode === "conversations" ? "" : "none";
+  updateViewToggleIcon();
   loadHistory();
 });
+updateViewToggleIcon();
 
 async function toggleHistory(force) {
   const next = typeof force === "boolean" ? force : !historyOpen;
