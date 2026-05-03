@@ -5,8 +5,8 @@ description = "macOS menu-bar companion that gives AI coding agents a voice — 
 authors = ["Laith Zraikat <zraikat@gmail.com>"]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/soofdev/agent-voice"
-homepage = "https://github.com/soofdev/agent-voice"
+repository = "https://github.com/soofdev/claude-voice"
+homepage = "https://github.com/soofdev/claude-voice"
 readme = "../README.md"
 
 [lib]

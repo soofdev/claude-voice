@@ -7,9 +7,9 @@
   "author": "Laith Zraikat <zraikat@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/soofdev/agent-voice.git"
+    "url": "https://github.com/soofdev/claude-voice.git"
   },
-  "homepage": "https://github.com/soofdev/agent-voice",
+  "homepage": "https://github.com/soofdev/claude-voice",
   "type": "module",
   "scripts": {
     "tauri": "tauri"
