@@ -184,7 +184,9 @@ fn replay_history(
     history: tauri::State<Arc<HistoryStore>>,
     settings: tauri::State<Arc<SettingsStore>>,
 ) -> Result<(), String> {
-    let entry = history.get(&id).ok_or_else(|| "entry not found".to_string())?;
+    let entry = history
+        .get(&id)
+        .ok_or_else(|| "entry not found".to_string())?;
     let cfg = settings.get();
     tts.replay(entry, cfg);
     Ok(())
@@ -400,9 +402,8 @@ end tell"#
     }
 
     fn is_app_running(name: &str) -> bool {
-        let script = format!(
-            r#"tell application "System Events" to (name of processes) contains "{name}""#
-        );
+        let script =
+            format!(r#"tell application "System Events" to (name of processes) contains "{name}""#);
         match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "true",
             Err(_) => false,
@@ -560,10 +561,7 @@ fn install_hook_impl(port: u16) -> Result<String, String> {
     };
 
     if !root.is_object() {
-        return Err(format!(
-            "{} is not a JSON object",
-            path.display()
-        ));
+        return Err(format!("{} is not a JSON object", path.display()));
     }
 
     let hooks = root
@@ -600,12 +598,14 @@ fn install_hook_impl(port: u16) -> Result<String, String> {
                 .map(|c| c.contains(&marker))
                 .unwrap_or(false);
             if is_ours {
-                h.as_object_mut()
-                    .unwrap()
-                    .insert("command".to_string(), serde_json::Value::String(new_cmd.clone()));
-                h.as_object_mut()
-                    .unwrap()
-                    .insert("type".to_string(), serde_json::Value::String("command".to_string()));
+                h.as_object_mut().unwrap().insert(
+                    "command".to_string(),
+                    serde_json::Value::String(new_cmd.clone()),
+                );
+                h.as_object_mut().unwrap().insert(
+                    "type".to_string(),
+                    serde_json::Value::String("command".to_string()),
+                );
                 updated = true;
             }
         }
@@ -705,23 +705,20 @@ pub fn run() {
             let tts_state = app.state::<Arc<TtsEngine>>();
             tts_state.set_app_handle(handle.clone());
 
-            let popup = WebviewWindowBuilder::new(
-                app,
-                "popup",
-                WebviewUrl::App("popup.html".into()),
-            )
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .resizable(true)
-            .focused(false)
-            .skip_taskbar(true)
-            .visible(false)
-            .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-            .min_inner_size(POPUP_MIN_WIDTH, POPUP_MIN_HEIGHT)
-            .shadow(false)
-            .accept_first_mouse(true)
-            .build()?;
+            let popup =
+                WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("popup.html".into()))
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .resizable(true)
+                    .focused(false)
+                    .skip_taskbar(true)
+                    .visible(false)
+                    .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
+                    .min_inner_size(POPUP_MIN_WIDTH, POPUP_MIN_HEIGHT)
+                    .shadow(false)
+                    .accept_first_mouse(true)
+                    .build()?;
 
             let saved_cfg = settings_store.get();
             // Saved geometry is only persisted for the expanded popup
@@ -761,17 +758,14 @@ pub fn run() {
 
             // popup owns its own hide logic (respects pin)
 
-            let settings_window = WebviewWindowBuilder::new(
-                app,
-                "settings",
-                WebviewUrl::App("index.html".into()),
-            )
-            .title("Claude Voice Settings")
-            .inner_size(480.0, 820.0)
-            .min_inner_size(440.0, 560.0)
-            .resizable(true)
-            .visible(false)
-            .build()?;
+            let settings_window =
+                WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html".into()))
+                    .title("Claude Voice Settings")
+                    .inner_size(480.0, 820.0)
+                    .min_inner_size(440.0, 560.0)
+                    .resizable(true)
+                    .visible(false)
+                    .build()?;
             let _ = settings_window.hide();
 
             let enabled_item = CheckMenuItem::with_id(
@@ -789,8 +783,13 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let stop_item =
-                MenuItem::with_id(&handle, "stop_speaking", "Stop Speaking", true, None::<&str>)?;
+            let stop_item = MenuItem::with_id(
+                &handle,
+                "stop_speaking",
+                "Stop Speaking",
+                true,
+                None::<&str>,
+            )?;
             let pin_item = CheckMenuItem::with_id(
                 &handle,
                 "toggle_pin_popup",
@@ -806,18 +805,9 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let sessions_submenu = Submenu::with_id_and_items(
-                &handle,
-                "sessions_submenu",
-                "Sessions",
-                true,
-                &[],
-            )?;
-            rebuild_sessions_submenu(
-                &sessions_submenu,
-                &sessions_store.list(),
-                &handle,
-            )?;
+            let sessions_submenu =
+                Submenu::with_id_and_items(&handle, "sessions_submenu", "Sessions", true, &[])?;
+            rebuild_sessions_submenu(&sessions_submenu, &sessions_store.list(), &handle)?;
             let settings_item =
                 MenuItem::with_id(&handle, "open_settings", "Settings…", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(&handle, "quit", "Quit", true, None::<&str>)?;
@@ -849,16 +839,13 @@ pub fn run() {
             let handle_for_listen = handle.clone();
             handle.listen("sessions:changed", move |_| {
                 let list = sessions_for_listen.list();
-                if let Err(e) =
-                    rebuild_sessions_submenu(&submenu_listen, &list, &handle_for_listen)
+                if let Err(e) = rebuild_sessions_submenu(&submenu_listen, &list, &handle_for_listen)
                 {
                     eprintln!("[claude-voice] sessions submenu rebuild failed: {e}");
                 }
             });
 
-            let icon = tauri::image::Image::from_bytes(include_bytes!(
-                "../icons/tray.png"
-            ))?;
+            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -955,10 +942,7 @@ pub fn run() {
 
             {
                 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-                let shortcut = Shortcut::new(
-                    Some(Modifiers::SUPER | Modifiers::SHIFT),
-                    Code::KeyV,
-                );
+                let shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyV);
                 if let Err(e) = app.global_shortcut().register(shortcut) {
                     eprintln!("[claude-voice] global shortcut register failed: {e}");
                 }
@@ -1035,20 +1019,12 @@ fn rebuild_sessions_submenu(
     for s in sessions {
         let enable_id = format!("session_enable_{}", s.session_id);
         let settings_id = format!("session_settings_{}", s.session_id);
-        let enable_item = CheckMenuItem::with_id(
-            handle,
-            &enable_id,
-            "Enabled",
-            true,
-            s.enabled,
-            None::<&str>,
-        )?;
+        let enable_item =
+            CheckMenuItem::with_id(handle, &enable_id, "Enabled", true, s.enabled, None::<&str>)?;
         let settings_item =
             MenuItem::with_id(handle, &settings_id, "Settings…", true, None::<&str>)?;
-        let session_sub = Submenu::with_items(handle, &s.label, true, &[
-            &enable_item,
-            &settings_item,
-        ])?;
+        let session_sub =
+            Submenu::with_items(handle, &s.label, true, &[&enable_item, &settings_item])?;
         submenu.append(&session_sub)?;
     }
     Ok(())
@@ -1057,7 +1033,9 @@ fn rebuild_sessions_submenu(
 fn persist_popup_geometry(win: &tauri::Window) {
     let scale = win.scale_factor().unwrap_or(1.0);
     let Ok(size) = win.inner_size() else { return };
-    let Ok(pos) = win.outer_position() else { return };
+    let Ok(pos) = win.outer_position() else {
+        return;
+    };
     let lw = size.width as f64 / scale;
     let lh = size.height as f64 / scale;
     // Skip the minimized orb state so we don't persist the 240x240 geometry.

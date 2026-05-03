@@ -25,6 +25,23 @@ pub fn last_assistant_text(transcript_path: &Path) -> Option<String> {
     last
 }
 
+fn extract_text(content: &Value) -> String {
+    match content {
+        Value::String(s) => s.clone(),
+        Value::Array(items) => {
+            let mut parts = Vec::new();
+            for item in items {
+                if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                    if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
+                        parts.push(t.to_string());
+                    }
+                }
+            }
+            parts.join("\n\n")
+        }
+        _ => String::new(),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,9 +95,7 @@ mod tests {
 
     #[test]
     fn returns_none_for_no_assistant() {
-        let f = write_tmp(&[
-            r#"{"type":"user","message":{"content":"hi"}}"#,
-        ]);
+        let f = write_tmp(&[r#"{"type":"user","message":{"content":"hi"}}"#]);
         assert_eq!(last_assistant_text(f.path()), None);
     }
 
@@ -112,23 +127,5 @@ mod tests {
     #[test]
     fn returns_none_for_missing_file() {
         assert_eq!(last_assistant_text(Path::new("/nonexistent/path")), None);
-    }
-}
-
-fn extract_text(content: &Value) -> String {
-    match content {
-        Value::String(s) => s.clone(),
-        Value::Array(items) => {
-            let mut parts = Vec::new();
-            for item in items {
-                if item.get("type").and_then(|t| t.as_str()) == Some("text") {
-                    if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
-                        parts.push(t.to_string());
-                    }
-                }
-            }
-            parts.join("\n\n")
-        }
-        _ => String::new(),
     }
 }

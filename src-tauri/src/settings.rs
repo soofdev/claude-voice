@@ -148,8 +148,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    let base = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
+    let base = dirs::config_dir().unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
     base.join("claude-voice").join("settings.json")
 }
 
@@ -163,10 +162,7 @@ impl Settings {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let _ = std::fs::set_permissions(
-                        &path,
-                        std::fs::Permissions::from_mode(0o600),
-                    );
+                    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
                 }
                 serde_json::from_str(&s).unwrap_or_default()
             }

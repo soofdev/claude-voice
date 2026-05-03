@@ -21,12 +21,7 @@ pub fn write_atomic_with_dir_mode(
     write_atomic_inner(path, bytes, mode, Some(dir_mode))
 }
 
-fn write_atomic_inner(
-    path: &Path,
-    bytes: &[u8],
-    mode: u32,
-    dir_mode: Option<u32>,
-) -> Result<()> {
+fn write_atomic_inner(path: &Path, bytes: &[u8], mode: u32, dir_mode: Option<u32>) -> Result<()> {
     let parent = path
         .parent()
         .with_context(|| format!("path has no parent: {}", path.display()))?;
@@ -61,8 +56,11 @@ fn write_atomic_inner(
 
     if let Err(e) = std::fs::rename(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
-        return Err(anyhow::Error::from(e)
-            .context(format!("rename {} -> {}", tmp.display(), path.display())));
+        return Err(anyhow::Error::from(e).context(format!(
+            "rename {} -> {}",
+            tmp.display(),
+            path.display()
+        )));
     }
     Ok(())
 }
@@ -92,8 +90,7 @@ fn open_for_write(path: &Path, _mode: u32) -> Result<std::fs::File> {
 #[cfg(unix)]
 fn ensure_dir_mode(path: &Path, mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    let meta = std::fs::metadata(path)
-        .with_context(|| format!("stat {}", path.display()))?;
+    let meta = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
     let current = meta.permissions().mode() & 0o777;
     if current != mode {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))

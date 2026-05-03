@@ -142,8 +142,7 @@ impl HistoryStore {
 }
 
 fn history_path() -> PathBuf {
-    let base = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
+    let base = dirs::config_dir().unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
     base.join("claude-voice").join("history.jsonl")
 }
 
@@ -161,7 +160,7 @@ fn load() -> Vec<HistoryEntry> {
     let reader = BufReader::new(file);
     reader
         .lines()
-        .filter_map(|l| l.ok())
+        .map_while(Result::ok)
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect()
 }
@@ -187,8 +186,7 @@ pub fn now_ms() -> u128 {
 }
 
 pub fn audio_dir() -> PathBuf {
-    let base = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
+    let base = dirs::config_dir().unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
     base.join("claude-voice").join("audio")
 }
 
@@ -263,8 +261,16 @@ mod tests {
     fn evicts_oldest_first() {
         let dir = tempfile::tempdir().unwrap();
         let now = SystemTime::now();
-        write_with_mtime(&dir.path().join("old.mp3"), 600, now - Duration::from_secs(60));
-        write_with_mtime(&dir.path().join("mid.mp3"), 600, now - Duration::from_secs(30));
+        write_with_mtime(
+            &dir.path().join("old.mp3"),
+            600,
+            now - Duration::from_secs(60),
+        );
+        write_with_mtime(
+            &dir.path().join("mid.mp3"),
+            600,
+            now - Duration::from_secs(30),
+        );
         write_with_mtime(&dir.path().join("new.mp3"), 600, now);
         // Cap of 1200 bytes: total is 1800, must drop at least one. The
         // oldest goes first.
@@ -278,9 +284,21 @@ mod tests {
     fn evicts_multiple_until_under_cap() {
         let dir = tempfile::tempdir().unwrap();
         let now = SystemTime::now();
-        write_with_mtime(&dir.path().join("a.mp3"), 500, now - Duration::from_secs(90));
-        write_with_mtime(&dir.path().join("b.mp3"), 500, now - Duration::from_secs(60));
-        write_with_mtime(&dir.path().join("c.mp3"), 500, now - Duration::from_secs(30));
+        write_with_mtime(
+            &dir.path().join("a.mp3"),
+            500,
+            now - Duration::from_secs(90),
+        );
+        write_with_mtime(
+            &dir.path().join("b.mp3"),
+            500,
+            now - Duration::from_secs(60),
+        );
+        write_with_mtime(
+            &dir.path().join("c.mp3"),
+            500,
+            now - Duration::from_secs(30),
+        );
         write_with_mtime(&dir.path().join("d.mp3"), 500, now);
         // Cap of 600: only one 500-byte file fits.
         enforce_audio_cap(dir.path(), 600).unwrap();

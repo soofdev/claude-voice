@@ -83,10 +83,7 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn bridge_pending(
-    State(s): State<AppState>,
-    Path(sid): Path<String>,
-) -> Json<Vec<String>> {
+async fn bridge_pending(State(s): State<AppState>, Path(sid): Path<String>) -> Json<Vec<String>> {
     Json(s.bridge.drain(&sid))
 }
 
@@ -105,10 +102,7 @@ async fn status(State(s): State<AppState>) -> Json<StatusResponse> {
     })
 }
 
-async fn speak(
-    State(s): State<AppState>,
-    Json(req): Json<SpeakRequest>,
-) -> impl IntoResponse {
+async fn speak(State(s): State<AppState>, Json(req): Json<SpeakRequest>) -> impl IntoResponse {
     let cfg = s.settings.get();
     if !cfg.enabled {
         return (StatusCode::OK, "disabled");
@@ -151,7 +145,7 @@ async fn hook_stop(
     // Code versions that may include it natively), and ignore the "?"
     // sentinel that the script emits when no controlling terminal is
     // attached.
-    if input.tty.as_deref().map_or(true, str::is_empty) {
+    if input.tty.as_deref().is_none_or(str::is_empty) {
         if let Some(t) = headers
             .get("x-claude-voice-tty")
             .and_then(|v| v.to_str().ok())
@@ -193,7 +187,10 @@ async fn hook_stop(
         }
     }
 
-    let raw = if let Some(msg) = input.last_assistant_message.filter(|m| !m.trim().is_empty()) {
+    let raw = if let Some(msg) = input
+        .last_assistant_message
+        .filter(|m| !m.trim().is_empty())
+    {
         msg
     } else if let Some(path) = input.transcript_path {
         match last_assistant_text(&PathBuf::from(path)) {

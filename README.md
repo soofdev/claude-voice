@@ -131,7 +131,15 @@ In the popup:
 
 All audio, history, session preferences, and voice recordings stay on your machine in `~/Library/Application Support/claude-voice/`. Outbound network traffic goes only to the voice, summarizer, and STT providers you configure — only when those features are enabled. No analytics. No telemetry.
 
+`settings.json`, `sessions.json`, and `history.jsonl` are written with `0600` (owner read/write only) and the parent directory is `0700`. Atomic temp-file-and-rename, so a crash mid-write can't leave a half-written config.
+
 The Chrome extension only has host permissions for `https://replit.com/*` (to observe the agent timeline) and `http://127.0.0.1/*` (to talk to your local Claude Voice server). It never sends data to third parties.
+
+## Threat model
+
+Claude Voice is built for a **single-user macOS desktop**. The local HTTP server on `127.0.0.1:8765` is unauthenticated by design — it's expected that anything running as your user can already read `~/Library/Application Support/claude-voice/` directly, so a token check on the loopback wouldn't actually raise the bar. Browsers can't reach the server because the JSON endpoints fail CORS preflight, and rate / body-size limits are pinned per route.
+
+If you run on a **shared / multi-user machine**, treat the bridge endpoints (`/speak`, `/hook/stop`, `/bridge/pending/:sid`) as accessible to anyone with a shell on the same box. In particular, `/bridge/pending/:sid` will hand a queued reply to whoever asks for it first — so on a shared box, a co-tenant could intercept a Replit reply before the Chrome extension fetches it. Don't run Claude Voice in that environment, or scope it tighter via firewall rules.
 
 ## Platform support
 

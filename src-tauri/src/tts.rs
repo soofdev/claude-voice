@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::process::Command as StdCommand;
 use std::sync::{Arc, Mutex, OnceLock};
-use tauri::{AppHandle, Emitter};
 use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, Emitter};
 use tokio::process::Command;
 
 use crate::code_extract::{self, CodeBlock};
@@ -130,7 +130,10 @@ impl TtsEngine {
         // silently drop the second delivery. Covers Replit DOM remounts,
         // rare Claude Code hook misfires, and any future bridge.
         if self.is_recent_duplicate(&text) {
-            eprintln!("[claude-voice] skipped duplicate speak() ({} chars)", text.len());
+            eprintln!(
+                "[claude-voice] skipped duplicate speak() ({} chars)",
+                text.len()
+            );
             return;
         }
         // Allocate the id now and drop a placeholder into history so the
@@ -157,7 +160,12 @@ impl TtsEngine {
             use tauri::Emitter;
             let _ = app.emit("history:changed", ());
         }
-        self.enqueue(QueueItem::Speak { id, text, cfg, session });
+        self.enqueue(QueueItem::Speak {
+            id,
+            text,
+            cfg,
+            session,
+        });
     }
 
     pub fn replay(&self, entry: HistoryEntry, cfg: Settings) {
@@ -319,9 +327,16 @@ async fn runner(inner: Arc<TtsInner>, app: Option<AppHandle>) {
                 None
             }
         };
-        let Some(item) = next else { break; };
+        let Some(item) = next else {
+            break;
+        };
         match item {
-            QueueItem::Speak { id, text, cfg, session } => {
+            QueueItem::Speak {
+                id,
+                text,
+                cfg,
+                session,
+            } => {
                 run_pipeline(inner.clone(), app.clone(), id, text, cfg, session).await;
             }
             QueueItem::Replay { entry, cfg } => {
@@ -401,7 +416,10 @@ async fn run_pipeline(
             Ok(ws) => (Some(dest), ws),
             Err(e) => {
                 eprintln!("[claude-voice] elevenlabs fetch failed, falling back to say: {e}");
-                emit_error(&app, &format!("ElevenLabs unavailable — using system voice. ({e})"));
+                emit_error(
+                    &app,
+                    &format!("ElevenLabs unavailable — using system voice. ({e})"),
+                );
                 (None, approximate_words(&spoken, cfg.rate))
             }
         }
@@ -430,7 +448,20 @@ async fn run_pipeline(
         }
     }
 
-    play_text(inner, app, id, spoken, original, links, code_blocks, cfg, audio_path, words, session).await;
+    play_text(
+        inner,
+        app,
+        id,
+        spoken,
+        original,
+        links,
+        code_blocks,
+        cfg,
+        audio_path,
+        words,
+        session,
+    )
+    .await;
 }
 
 async fn replay_pipeline(
@@ -466,7 +497,10 @@ async fn replay_pipeline(
                 Ok(ws) => (Some(dest), ws),
                 Err(e) => {
                     eprintln!("[claude-voice] replay fetch failed, falling back to say: {e}");
-                    emit_error(&app, &format!("ElevenLabs unavailable — using system voice. ({e})"));
+                    emit_error(
+                        &app,
+                        &format!("ElevenLabs unavailable — using system voice. ({e})"),
+                    );
                     (None, approximate_words(&entry.spoken, cfg.rate))
                 }
             }
@@ -495,6 +529,7 @@ async fn replay_pipeline(
     .await;
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn play_text(
     inner: Arc<TtsInner>,
     app: Option<AppHandle>,
@@ -588,10 +623,7 @@ fn maybe_prepend_session_prefix(
 /// Pull up to 5 recently spoken messages (within the last 30 minutes) for
 /// the given session, oldest first. Used as memory for the summarizer so
 /// it can skip content already covered.
-fn recent_spoken_for_session(
-    inner: &Arc<TtsInner>,
-    session_id: Option<&str>,
-) -> Vec<String> {
+fn recent_spoken_for_session(inner: &Arc<TtsInner>, session_id: Option<&str>) -> Vec<String> {
     const MAX_ENTRIES: usize = 5;
     const WINDOW_MS: u128 = 30 * 60 * 1000;
     let Some(store) = inner.history.get() else {
@@ -673,9 +705,7 @@ async fn summarize(
                 .replace("</msg>", "<\u{200B}/msg>");
             recent.push_str(&format!("<msg n=\"{}\">\n{}\n</msg>\n", i + 1, safe));
         }
-        format!(
-            "<recent>\n{recent}</recent>\n<source>\n{safe_text}\n</source>"
-        )
+        format!("<recent>\n{recent}</recent>\n<source>\n{safe_text}\n</source>")
     };
     let body = serde_json::json!({
         "model": cfg.summary_model,
@@ -703,13 +733,12 @@ async fn summarize(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let stop_reason = v
-        .get("stop_reason")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let stop_reason = v.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("");
     if stop_reason == "max_tokens" {
         eprintln!("[claude-voice] summarizer hit max_tokens cap; rephrase was clipped");
-        anyhow::bail!("Summarizer hit output cap — try a shorter brevity level or increase the cap");
+        anyhow::bail!(
+            "Summarizer hit output cap — try a shorter brevity level or increase the cap"
+        );
     }
     Ok(text)
 }
