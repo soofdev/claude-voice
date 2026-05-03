@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -54,16 +54,31 @@ struct StatusResponse {
     rate: u32,
 }
 
+// Axum's default is 2 MiB. The endpoints that accept a body all carry a
+// short JSON payload — pin a tight per-route ceiling so a misbehaving
+// local process can't enqueue gigabytes of "speak this" or sit on the
+// socket dribbling a slow body.
+const SPEAK_BODY_LIMIT: usize = 64 * 1024;
+// last_assistant_message can be a full agent response — keep this
+// generous but bounded.
+const HOOK_BODY_LIMIT: usize = 512 * 1024;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(root))
         .route("/status", get(status))
-        .route("/speak", post(speak))
+        .route(
+            "/speak",
+            post(speak).layer(DefaultBodyLimit::max(SPEAK_BODY_LIMIT)),
+        )
         .route("/stop", post(stop))
         .route("/pause", post(pause))
         .route("/resume", post(resume))
         .route("/toggle", post(toggle))
-        .route("/hook/stop", post(hook_stop))
+        .route(
+            "/hook/stop",
+            post(hook_stop).layer(DefaultBodyLimit::max(HOOK_BODY_LIMIT)),
+        )
         .route("/bridge/pending/:sid", get(bridge_pending))
         .with_state(state)
 }

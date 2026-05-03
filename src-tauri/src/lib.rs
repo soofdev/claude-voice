@@ -427,7 +427,50 @@ end tell"#
     }
 
     fn applescript_escape(s: &str) -> String {
-        s.replace('\\', "\\\\").replace('"', "\\\"")
+        // AppleScript string literals are single-line: a raw newline,
+        // carriage return, or tab inside the quoted text terminates the
+        // string mid-script and produces a syntax error. Replace them
+        // with the AppleScript escape forms so a multi-line reply
+        // round-trips intact. Backslash must be done first so the
+        // backslashes we insert below don't get re-doubled.
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::applescript_escape;
+
+        #[test]
+        fn escapes_quote() {
+            assert_eq!(applescript_escape("a\"b"), "a\\\"b");
+        }
+
+        #[test]
+        fn escapes_backslash() {
+            assert_eq!(applescript_escape("a\\b"), "a\\\\b");
+        }
+
+        #[test]
+        fn escapes_newline() {
+            assert_eq!(applescript_escape("a\nb"), "a\\nb");
+        }
+
+        #[test]
+        fn escapes_cr_and_tab() {
+            assert_eq!(applescript_escape("a\rb\tc"), "a\\rb\\tc");
+        }
+
+        #[test]
+        fn backslash_before_quote_does_not_collide() {
+            // Input: `a\"b` (backslash followed by quote). We must not
+            // produce `a\\"b` (which would let the quote escape the
+            // string); the correct output is `a\\\"b`.
+            assert_eq!(applescript_escape("a\\\"b"), "a\\\\\\\"b");
+        }
     }
 }
 
