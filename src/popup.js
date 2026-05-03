@@ -1,6 +1,6 @@
 const { event, core, window: tauriWindow } = window.__TAURI__;
 const popupWindow = tauriWindow.getCurrentWindow();
-const { LogicalSize } = tauriWindow;
+const { LogicalSize, LogicalPosition } = tauriWindow;
 
 const SIZE_COLLAPSED = { w: 380, h: 360 };
 const SIZE_EXPANDED = { w: 380, h: 720 };
@@ -26,11 +26,17 @@ const orb = document.getElementById("orb");
 const orbCore = document.getElementById("orb-core");
 const orbLabel = document.getElementById("orb-label");
 
-const SIZE_ORB = { w: 240, h: 240 };
+// Orb-mode window size. The window is invisibly click-blocking everywhere
+// inside its rect, so this should be just big enough to contain the halo
+// glow and the peak ripple animation — see @keyframes orb-ripple in
+// popup.css. Bumping the ripple `scale` ceiling means bumping this too.
+const SIZE_ORB = { w: 140, h: 140 };
 
 const MAX_CHIPS = 5;
 let historyOpen = true;
 let historyViewMode = "messages";
+let historyQuery = "";
+let cachedHistory = [];
 let showingOriginal = false;
 let minimized = false;
 let expandedSize = { ...SIZE_COLLAPSED };
@@ -720,25 +726,107 @@ function stopBrowserSpeech() {
   }
 }
 
+function quadrant(cx, cy, monitor, scale) {
+  if (!monitor) return { onRightHalf: true, onBottomHalf: false };
+  const monX = monitor.position.x / scale;
+  const monY = monitor.position.y / scale;
+  const monW = monitor.size.width / scale;
+  const monH = monitor.size.height / scale;
+  return {
+    onRightHalf: cx > monX + monW / 2,
+    onBottomHalf: cy > monY + monH / 2,
+  };
+}
+
+function applyAnchorAttr(onRightHalf, onBottomHalf) {
+  document.body.dataset.anchor = `${onBottomHalf ? "bottom" : "top"}-${onRightHalf ? "right" : "left"}`;
+}
+
+async function refreshAnchor() {
+  try {
+    const scale = await popupWindow.scaleFactor();
+    const pos = await popupWindow.outerPosition();
+    const sz = await popupWindow.innerSize();
+    const monitor = await tauriWindow.currentMonitor();
+    const cx = pos.x / scale + sz.width / scale / 2;
+    const cy = pos.y / scale + sz.height / scale / 2;
+    const { onRightHalf, onBottomHalf } = quadrant(cx, cy, monitor, scale);
+    applyAnchorAttr(onRightHalf, onBottomHalf);
+  } catch (e) {}
+}
+
 async function setMinimized(on) {
   if (on === minimized) return;
   minimized = on;
   document.body.classList.toggle("minimized", on);
   try {
+    const scale = await popupWindow.scaleFactor();
+    const pos = await popupWindow.outerPosition();
+    const sz = await popupWindow.innerSize();
+    // currentMonitor is a top-level function on the window module, NOT a
+    // method on the Window instance. The instance has no such method, so
+    // calling popupWindow.currentMonitor() silently throws and aborts the
+    // resize/reposition logic that follows.
+    const monitor = await tauriWindow.currentMonitor();
+    const curX = pos.x / scale;
+    const curY = pos.y / scale;
+    const curW = sz.width / scale;
+    const curH = sz.height / scale;
+    const { onRightHalf, onBottomHalf } = quadrant(
+      curX + curW / 2,
+      curY + curH / 2,
+      monitor,
+      scale,
+    );
+
+    let newW;
+    let newH;
     if (on) {
-      const sz = await popupWindow.innerSize();
-      const scale = await popupWindow.scaleFactor();
-      expandedSize = { w: sz.width / scale, h: sz.height / scale };
-      await popupWindow.setSize(new LogicalSize(SIZE_ORB.w, SIZE_ORB.h));
+      expandedSize = { w: curW, h: curH };
+      newW = SIZE_ORB.w;
+      newH = SIZE_ORB.h;
     } else {
-      await popupWindow.setSize(
-        new LogicalSize(expandedSize.w || SIZE_COLLAPSED.w, expandedSize.h || SIZE_COLLAPSED.h),
-      );
+      newW = expandedSize.w || SIZE_COLLAPSED.w;
+      newH = expandedSize.h || SIZE_COLLAPSED.h;
     }
+
+    let nx = onRightHalf ? curX + curW - newW : curX;
+    let ny = onBottomHalf ? curY + curH - newH : curY;
+    if (monitor) {
+      const monX = monitor.position.x / scale;
+      const monY = monitor.position.y / scale;
+      const monW = monitor.size.width / scale;
+      const monH = monitor.size.height / scale;
+      nx = Math.max(monX, Math.min(nx, monX + monW - newW));
+      ny = Math.max(monY, Math.min(ny, monY + monH - newH));
+    }
+
+    // Lower the OS-level min size BEFORE shrinking, otherwise wry/macOS
+    // silently clamps setSize to the previous min and the window stays
+    // (and continues to block clicks at) its old dimensions. When
+    // expanding back we relax the min after the resize so the user can
+    // still drag-resize the expanded popup down to a sane minimum.
+    if (on) {
+      try {
+        await popupWindow.setMinSize(new LogicalSize(newW, newH));
+      } catch (e) {}
+    }
+    await popupWindow.setSize(new LogicalSize(newW, newH));
+    await popupWindow.setPosition(new LogicalPosition(nx, ny));
+    if (!on) {
+      try {
+        await popupWindow.setMinSize(new LogicalSize(240, 240));
+      } catch (e) {}
+    }
+    applyAnchorAttr(onRightHalf, onBottomHalf);
   } catch (e) {
     console.error("setSize failed", e);
   }
 }
+
+refreshAnchor();
+popupWindow.onMoved(() => refreshAnchor());
+popupWindow.onResized(() => refreshAnchor());
 
 minimizeBtn.addEventListener("click", () => setMinimized(true));
 
@@ -859,9 +947,6 @@ replayBtn.addEventListener("click", async () => {
     console.error("replay_history failed", e);
   }
 });
-
-let historyQuery = "";
-let cachedHistory = [];
 
 function matchesQuery(entry, q) {
   if (!q) return true;

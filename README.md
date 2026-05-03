@@ -146,4 +146,4 @@ See [PRD.md](./PRD.md) for the full feature surface.
 
 ## License
 
-MIT (or whichever you prefer — see `LICENSE`).
+MIT — see [LICENSE](./LICENSE).

@@ -1,5 +1,6 @@
 mod bridge;
 mod code_extract;
+mod fs_util;
 mod history;
 mod link_extract;
 mod server;
@@ -25,7 +26,11 @@ use tts::TtsEngine;
 
 const POPUP_WIDTH: f64 = 680.0;
 const POPUP_HEIGHT: f64 = 620.0;
-const POPUP_MIN_HEIGHT: f64 = 240.0;
+// Low enough to allow the minimized orb (see SIZE_ORB in popup.js) to
+// actually shrink to its target — otherwise the OS clamps the resize and
+// the click-blocking rect stays at the larger size.
+const POPUP_MIN_WIDTH: f64 = 140.0;
+const POPUP_MIN_HEIGHT: f64 = 140.0;
 const POPUP_MARGIN_RIGHT: f64 = 12.0;
 const POPUP_MARGIN_TOP: f64 = 32.0;
 
@@ -462,10 +467,11 @@ fn install_hook(store: tauri::State<Arc<SettingsStore>>) -> Result<String, Strin
 fn install_hook_impl(port: u16) -> Result<String, String> {
     let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
     let path = home.join(".claude").join("settings.json");
-    let marker = format!("/hook/stop");
+    let marker = "/hook/stop".to_string();
 
-    let mut root: serde_json::Value = match std::fs::read_to_string(&path) {
-        Ok(s) if !s.trim().is_empty() => serde_json::from_str(&s)
+    let existing = std::fs::read_to_string(&path).ok();
+    let mut root: serde_json::Value = match existing.as_deref() {
+        Some(s) if !s.trim().is_empty() => serde_json::from_str(s)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?,
         _ => serde_json::json!({}),
     };
@@ -534,11 +540,21 @@ fn install_hook_impl(port: u16) -> Result<String, String> {
         "Updated"
     };
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    // First-time install: drop a one-shot .bak alongside the original so
+    // the user can recover from a bad parse or an unwanted edit. We don't
+    // overwrite an existing .bak — that would clobber a known-good copy
+    // with a possibly-already-modified file.
+    if status == "Installed" {
+        if let Some(prev) = existing.as_deref() {
+            let bak = path.with_extension("json.bak");
+            if !bak.exists() {
+                let _ = fs_util::write_atomic(&bak, prev.as_bytes(), 0o600);
+            }
+        }
     }
+
     let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    fs_util::write_atomic(&path, pretty.as_bytes(), 0o600).map_err(|e| e.to_string())?;
     Ok(format!("{status} hook in {}", path.display()))
 }
 
@@ -619,14 +635,17 @@ pub fn run() {
             .skip_taskbar(true)
             .visible(false)
             .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-            .min_inner_size(240.0, POPUP_MIN_HEIGHT)
+            .min_inner_size(POPUP_MIN_WIDTH, POPUP_MIN_HEIGHT)
             .shadow(false)
             .accept_first_mouse(true)
             .build()?;
 
             let saved_cfg = settings_store.get();
+            // Saved geometry is only persisted for the expanded popup
+            // (see persist_popup_geometry), so restore with the expanded
+            // minimums, not the smaller orb-mode minimum.
             let w = saved_cfg.popup_width.unwrap_or(POPUP_WIDTH).max(240.0);
-            let h = saved_cfg.popup_height.unwrap_or(POPUP_HEIGHT).max(POPUP_MIN_HEIGHT);
+            let h = saved_cfg.popup_height.unwrap_or(POPUP_HEIGHT).max(240.0);
             let _ = popup.set_size(LogicalSize::new(w, h));
             match saved_cfg.popup_x.zip(saved_cfg.popup_y) {
                 Some((x, y)) if position_on_any_monitor(&popup, x, y, w, h) => {
