@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Voice Bridge",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Speaks agent responses from Replit (and other agentic coding platforms) through the Claude Voice desktop app.",
   "permissions": ["storage"],
   "host_permissions": [

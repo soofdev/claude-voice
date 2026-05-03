@@ -208,15 +208,21 @@ fn load() -> HashMap<String, SessionInfo> {
     let Ok(content) = std::fs::read_to_string(&path) else {
         return HashMap::new();
     };
+    // Tighten perms on upgrade. Best-effort.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
     let list: Vec<SessionInfo> = serde_json::from_str(&content).unwrap_or_default();
     list.into_iter().map(|s| (s.session_id.clone(), s)).collect()
 }
 
 fn save(entries: &[SessionInfo]) -> Result<()> {
     let path = sessions_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, serde_json::to_string_pretty(entries)?)?;
+    let bytes = serde_json::to_string_pretty(entries)?.into_bytes();
+    // 0o600: session metadata includes tty paths and cwds. Same parent
+    // dir as settings.json (we own it), so tighten that too.
+    crate::fs_util::write_atomic_with_dir_mode(&path, &bytes, 0o600, 0o700)?;
     Ok(())
 }

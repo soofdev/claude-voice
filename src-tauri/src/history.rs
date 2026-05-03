@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -144,6 +144,12 @@ fn load() -> Vec<HistoryEntry> {
     let Ok(file) = File::open(&path) else {
         return Vec::new();
     };
+    // Tighten perms on upgrade. Best-effort.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
     let reader = BufReader::new(file);
     reader
         .lines()
@@ -154,19 +160,14 @@ fn load() -> Vec<HistoryEntry> {
 
 fn save(entries: &[HistoryEntry]) -> Result<()> {
     let path = history_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut f = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&path)?;
+    let mut buf = String::new();
     for e in entries {
-        let line = serde_json::to_string(e)?;
-        f.write_all(line.as_bytes())?;
-        f.write_all(b"\n")?;
+        buf.push_str(&serde_json::to_string(e)?);
+        buf.push('\n');
     }
+    // 0o600: history entries include verbatim agent output, which can
+    // contain code, command output, or other user-private content.
+    crate::fs_util::write_atomic_with_dir_mode(&path, buf.as_bytes(), 0o600, 0o700)?;
     Ok(())
 }
 
