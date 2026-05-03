@@ -485,9 +485,49 @@ fn build_hook_command(port: u16) -> String {
     // -o /dev/null drops the response body, and `|| true` guarantees a
     // zero exit so Claude Code never reports "Failed with non-blocking
     // status code" just because Claude Voice was restarting.
+    //
+    // The TTY rides along as an HTTP header rather than being spliced
+    // into the JSON body. The previous form used `cat | sed 's/^{//'`
+    // to strip Claude Code's leading `{` and prepend `"tty":"/dev/X",`
+    // — which broke if the JSON ever started with whitespace and
+    // produced `"tty":"/dev/"` when no TTY was attached. The header
+    // form also avoids any shell-quoting concerns around the JSON.
     format!(
-        "TTY=$(ps -o tty= -p $$ | tr -d ' '); (printf '{{\"tty\":\"/dev/%s\",' \"$TTY\"; cat | sed 's/^{{//') | curl -s --max-time 5 -o /dev/null -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @- || true"
+        "TTY=$(ps -o tty= -p $$ | tr -d ' '); [ -z \"$TTY\" ] && TTY=\"?\"; \
+         curl -s --max-time 5 -o /dev/null -X POST \
+         http://127.0.0.1:{port}/hook/stop \
+         -H 'Content-Type: application/json' \
+         -H \"X-Claude-Voice-Tty: /dev/$TTY\" \
+         --data-binary @- || true"
     )
+}
+
+#[cfg(test)]
+mod hook_command_tests {
+    use super::build_hook_command;
+
+    #[test]
+    fn includes_port_in_url() {
+        let cmd = build_hook_command(9000);
+        assert!(cmd.contains("http://127.0.0.1:9000/hook/stop"), "{cmd}");
+    }
+
+    #[test]
+    fn carries_tty_via_header_not_body() {
+        let cmd = build_hook_command(8765);
+        assert!(cmd.contains("X-Claude-Voice-Tty: /dev/$TTY"), "{cmd}");
+        // The old form spliced JSON in the shell — make sure we don't
+        // regress to it.
+        assert!(!cmd.contains("sed "), "{cmd}");
+        assert!(!cmd.contains("printf "), "{cmd}");
+    }
+
+    #[test]
+    fn is_fire_and_forget() {
+        let cmd = build_hook_command(8765);
+        assert!(cmd.contains("--max-time 5"), "{cmd}");
+        assert!(cmd.ends_with("|| true"), "{cmd}");
+    }
 }
 
 #[tauri::command]

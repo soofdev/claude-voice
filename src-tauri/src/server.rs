@@ -1,6 +1,6 @@
 use axum::{
     extract::{DefaultBodyLimit, Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -139,10 +139,27 @@ async fn toggle(State(s): State<AppState>) -> impl IntoResponse {
 
 async fn hook_stop(
     State(s): State<AppState>,
-    Json(input): Json<StopHookInput>,
+    headers: HeaderMap,
+    Json(mut input): Json<StopHookInput>,
 ) -> impl IntoResponse {
     if input.stop_hook_active {
         return (StatusCode::OK, "skip");
+    }
+    // The hook command pipeline sets X-Claude-Voice-Tty so we don't have
+    // to splice JSON in the shell. Trust the header only when the body
+    // didn't already provide a tty (forward-compat with future Claude
+    // Code versions that may include it natively), and ignore the "?"
+    // sentinel that the script emits when no controlling terminal is
+    // attached.
+    if input.tty.as_deref().map_or(true, str::is_empty) {
+        if let Some(t) = headers
+            .get("x-claude-voice-tty")
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && *t != "/dev/?")
+        {
+            input.tty = Some(t.to_string());
+        }
     }
     let cfg = s.settings.get();
     if !cfg.enabled {
