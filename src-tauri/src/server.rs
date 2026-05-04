@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Path, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -54,24 +54,36 @@ struct StatusResponse {
     rate: u32,
 }
 
+// Axum's default is 2 MiB. The endpoints that accept a body all carry a
+// short JSON payload — pin a tight per-route ceiling so a misbehaving
+// local process can't enqueue gigabytes of "speak this" or sit on the
+// socket dribbling a slow body.
+const SPEAK_BODY_LIMIT: usize = 64 * 1024;
+// last_assistant_message can be a full agent response — keep this
+// generous but bounded.
+const HOOK_BODY_LIMIT: usize = 512 * 1024;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(root))
         .route("/status", get(status))
-        .route("/speak", post(speak))
+        .route(
+            "/speak",
+            post(speak).layer(DefaultBodyLimit::max(SPEAK_BODY_LIMIT)),
+        )
         .route("/stop", post(stop))
         .route("/pause", post(pause))
         .route("/resume", post(resume))
         .route("/toggle", post(toggle))
-        .route("/hook/stop", post(hook_stop))
+        .route(
+            "/hook/stop",
+            post(hook_stop).layer(DefaultBodyLimit::max(HOOK_BODY_LIMIT)),
+        )
         .route("/bridge/pending/:sid", get(bridge_pending))
         .with_state(state)
 }
 
-async fn bridge_pending(
-    State(s): State<AppState>,
-    Path(sid): Path<String>,
-) -> Json<Vec<String>> {
+async fn bridge_pending(State(s): State<AppState>, Path(sid): Path<String>) -> Json<Vec<String>> {
     Json(s.bridge.drain(&sid))
 }
 
@@ -90,10 +102,7 @@ async fn status(State(s): State<AppState>) -> Json<StatusResponse> {
     })
 }
 
-async fn speak(
-    State(s): State<AppState>,
-    Json(req): Json<SpeakRequest>,
-) -> impl IntoResponse {
+async fn speak(State(s): State<AppState>, Json(req): Json<SpeakRequest>) -> impl IntoResponse {
     let cfg = s.settings.get();
     if !cfg.enabled {
         return (StatusCode::OK, "disabled");
@@ -124,10 +133,27 @@ async fn toggle(State(s): State<AppState>) -> impl IntoResponse {
 
 async fn hook_stop(
     State(s): State<AppState>,
-    Json(input): Json<StopHookInput>,
+    headers: HeaderMap,
+    Json(mut input): Json<StopHookInput>,
 ) -> impl IntoResponse {
     if input.stop_hook_active {
         return (StatusCode::OK, "skip");
+    }
+    // The hook command pipeline sets X-Claude-Voice-Tty so we don't have
+    // to splice JSON in the shell. Trust the header only when the body
+    // didn't already provide a tty (forward-compat with future Claude
+    // Code versions that may include it natively), and ignore the "?"
+    // sentinel that the script emits when no controlling terminal is
+    // attached.
+    if input.tty.as_deref().is_none_or(str::is_empty) {
+        if let Some(t) = headers
+            .get("x-claude-voice-tty")
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && *t != "/dev/?")
+        {
+            input.tty = Some(t.to_string());
+        }
     }
     let cfg = s.settings.get();
     if !cfg.enabled {
@@ -161,7 +187,10 @@ async fn hook_stop(
         }
     }
 
-    let raw = if let Some(msg) = input.last_assistant_message.filter(|m| !m.trim().is_empty()) {
+    let raw = if let Some(msg) = input
+        .last_assistant_message
+        .filter(|m| !m.trim().is_empty())
+    {
         msg
     } else if let Some(path) = input.transcript_path {
         match last_assistant_text(&PathBuf::from(path)) {

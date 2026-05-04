@@ -1,9 +1,13 @@
 [package]
 name = "claude-voice"
-version = "0.1.0"
-description = "Bridge Claude Code output to macOS text-to-speech"
-authors = ["you"]
+version = "1.0.0-alpha.1"
+description = "macOS menu-bar companion that gives AI coding agents a voice — speaks Claude Code and Replit agent responses, with a floating popup, history, and reply-back."
+authors = ["Laith Zraikat <zraikat@gmail.com>"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/soofdev/claude-voice"
+homepage = "https://github.com/soofdev/claude-voice"
+readme = "../README.md"
 
 [lib]
 name = "claude_voice_lib"

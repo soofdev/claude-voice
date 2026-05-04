@@ -637,6 +637,8 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
 }
 
 @keyframes orb-ripple {
+  /* Peak diameter = orb-core (56px) * scale. Keep `scale` * 56 < SIZE_ORB
+     in popup.js, otherwise the ripple gets clipped at the window edge. */
   0% {
     transform: scale(1);
     opacity: 0.6;
@@ -645,7 +647,7 @@ body.minimized.speaking .orb-ripples span:nth-child(3) {
     opacity: 0.25;
   }
   100% {
-    transform: scale(4);
+    transform: scale(2.4);
     opacity: 0;
   }
 }

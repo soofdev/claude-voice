@@ -256,6 +256,7 @@ async function loadSettings() {
   el("summary-threshold").value = settings.summary_threshold_chars;
   el("threshold-value").textContent = settings.summary_threshold_chars;
   el("summary-brevity").value = settings.summary_brevity || "balanced";
+  el("avoid-repetition").checked = !!settings.avoid_repetition;
 
   el("port").value = settings.port;
   el("hook-cmd").textContent = hookCmd;
@@ -327,6 +328,7 @@ function collect() {
     summary_model: el("summary-model").value,
     summary_threshold_chars: parseInt(el("summary-threshold").value, 10),
     summary_brevity: el("summary-brevity").value || "balanced",
+    avoid_repetition: el("avoid-repetition").checked,
   };
 }
 

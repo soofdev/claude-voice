@@ -1,5 +1,6 @@
 mod bridge;
 mod code_extract;
+mod fs_util;
 mod history;
 mod link_extract;
 mod server;
@@ -25,7 +26,11 @@ use tts::TtsEngine;
 
 const POPUP_WIDTH: f64 = 680.0;
 const POPUP_HEIGHT: f64 = 620.0;
-const POPUP_MIN_HEIGHT: f64 = 240.0;
+// Low enough to allow the minimized orb (see SIZE_ORB in popup.js) to
+// actually shrink to its target — otherwise the OS clamps the resize and
+// the click-blocking rect stays at the larger size.
+const POPUP_MIN_WIDTH: f64 = 140.0;
+const POPUP_MIN_HEIGHT: f64 = 140.0;
 const POPUP_MARGIN_RIGHT: f64 = 12.0;
 const POPUP_MARGIN_TOP: f64 = 32.0;
 
@@ -179,7 +184,9 @@ fn replay_history(
     history: tauri::State<Arc<HistoryStore>>,
     settings: tauri::State<Arc<SettingsStore>>,
 ) -> Result<(), String> {
-    let entry = history.get(&id).ok_or_else(|| "entry not found".to_string())?;
+    let entry = history
+        .get(&id)
+        .ok_or_else(|| "entry not found".to_string())?;
     let cfg = settings.get();
     tts.replay(entry, cfg);
     Ok(())
@@ -395,9 +402,8 @@ end tell"#
     }
 
     fn is_app_running(name: &str) -> bool {
-        let script = format!(
-            r#"tell application "System Events" to (name of processes) contains "{name}""#
-        );
+        let script =
+            format!(r#"tell application "System Events" to (name of processes) contains "{name}""#);
         match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "true",
             Err(_) => false,
@@ -422,7 +428,50 @@ end tell"#
     }
 
     fn applescript_escape(s: &str) -> String {
-        s.replace('\\', "\\\\").replace('"', "\\\"")
+        // AppleScript string literals are single-line: a raw newline,
+        // carriage return, or tab inside the quoted text terminates the
+        // string mid-script and produces a syntax error. Replace them
+        // with the AppleScript escape forms so a multi-line reply
+        // round-trips intact. Backslash must be done first so the
+        // backslashes we insert below don't get re-doubled.
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::applescript_escape;
+
+        #[test]
+        fn escapes_quote() {
+            assert_eq!(applescript_escape("a\"b"), "a\\\"b");
+        }
+
+        #[test]
+        fn escapes_backslash() {
+            assert_eq!(applescript_escape("a\\b"), "a\\\\b");
+        }
+
+        #[test]
+        fn escapes_newline() {
+            assert_eq!(applescript_escape("a\nb"), "a\\nb");
+        }
+
+        #[test]
+        fn escapes_cr_and_tab() {
+            assert_eq!(applescript_escape("a\rb\tc"), "a\\rb\\tc");
+        }
+
+        #[test]
+        fn backslash_before_quote_does_not_collide() {
+            // Input: `a\"b` (backslash followed by quote). We must not
+            // produce `a\\"b` (which would let the quote escape the
+            // string); the correct output is `a\\\"b`.
+            assert_eq!(applescript_escape("a\\\"b"), "a\\\\\\\"b");
+        }
     }
 }
 
@@ -437,9 +486,49 @@ fn build_hook_command(port: u16) -> String {
     // -o /dev/null drops the response body, and `|| true` guarantees a
     // zero exit so Claude Code never reports "Failed with non-blocking
     // status code" just because Claude Voice was restarting.
+    //
+    // The TTY rides along as an HTTP header rather than being spliced
+    // into the JSON body. The previous form used `cat | sed 's/^{//'`
+    // to strip Claude Code's leading `{` and prepend `"tty":"/dev/X",`
+    // — which broke if the JSON ever started with whitespace and
+    // produced `"tty":"/dev/"` when no TTY was attached. The header
+    // form also avoids any shell-quoting concerns around the JSON.
     format!(
-        "TTY=$(ps -o tty= -p $$ | tr -d ' '); (printf '{{\"tty\":\"/dev/%s\",' \"$TTY\"; cat | sed 's/^{{//') | curl -s --max-time 5 -o /dev/null -X POST http://127.0.0.1:{port}/hook/stop -H 'Content-Type: application/json' --data-binary @- || true"
+        "TTY=$(ps -o tty= -p $$ | tr -d ' '); [ -z \"$TTY\" ] && TTY=\"?\"; \
+         curl -s --max-time 5 -o /dev/null -X POST \
+         http://127.0.0.1:{port}/hook/stop \
+         -H 'Content-Type: application/json' \
+         -H \"X-Claude-Voice-Tty: /dev/$TTY\" \
+         --data-binary @- || true"
     )
+}
+
+#[cfg(test)]
+mod hook_command_tests {
+    use super::build_hook_command;
+
+    #[test]
+    fn includes_port_in_url() {
+        let cmd = build_hook_command(9000);
+        assert!(cmd.contains("http://127.0.0.1:9000/hook/stop"), "{cmd}");
+    }
+
+    #[test]
+    fn carries_tty_via_header_not_body() {
+        let cmd = build_hook_command(8765);
+        assert!(cmd.contains("X-Claude-Voice-Tty: /dev/$TTY"), "{cmd}");
+        // The old form spliced JSON in the shell — make sure we don't
+        // regress to it.
+        assert!(!cmd.contains("sed "), "{cmd}");
+        assert!(!cmd.contains("printf "), "{cmd}");
+    }
+
+    #[test]
+    fn is_fire_and_forget() {
+        let cmd = build_hook_command(8765);
+        assert!(cmd.contains("--max-time 5"), "{cmd}");
+        assert!(cmd.ends_with("|| true"), "{cmd}");
+    }
 }
 
 #[tauri::command]
@@ -462,19 +551,17 @@ fn install_hook(store: tauri::State<Arc<SettingsStore>>) -> Result<String, Strin
 fn install_hook_impl(port: u16) -> Result<String, String> {
     let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
     let path = home.join(".claude").join("settings.json");
-    let marker = format!("/hook/stop");
+    let marker = "/hook/stop".to_string();
 
-    let mut root: serde_json::Value = match std::fs::read_to_string(&path) {
-        Ok(s) if !s.trim().is_empty() => serde_json::from_str(&s)
+    let existing = std::fs::read_to_string(&path).ok();
+    let mut root: serde_json::Value = match existing.as_deref() {
+        Some(s) if !s.trim().is_empty() => serde_json::from_str(s)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?,
         _ => serde_json::json!({}),
     };
 
     if !root.is_object() {
-        return Err(format!(
-            "{} is not a JSON object",
-            path.display()
-        ));
+        return Err(format!("{} is not a JSON object", path.display()));
     }
 
     let hooks = root
@@ -511,12 +598,14 @@ fn install_hook_impl(port: u16) -> Result<String, String> {
                 .map(|c| c.contains(&marker))
                 .unwrap_or(false);
             if is_ours {
-                h.as_object_mut()
-                    .unwrap()
-                    .insert("command".to_string(), serde_json::Value::String(new_cmd.clone()));
-                h.as_object_mut()
-                    .unwrap()
-                    .insert("type".to_string(), serde_json::Value::String("command".to_string()));
+                h.as_object_mut().unwrap().insert(
+                    "command".to_string(),
+                    serde_json::Value::String(new_cmd.clone()),
+                );
+                h.as_object_mut().unwrap().insert(
+                    "type".to_string(),
+                    serde_json::Value::String("command".to_string()),
+                );
                 updated = true;
             }
         }
@@ -534,11 +623,21 @@ fn install_hook_impl(port: u16) -> Result<String, String> {
         "Updated"
     };
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    // First-time install: drop a one-shot .bak alongside the original so
+    // the user can recover from a bad parse or an unwanted edit. We don't
+    // overwrite an existing .bak — that would clobber a known-good copy
+    // with a possibly-already-modified file.
+    if status == "Installed" {
+        if let Some(prev) = existing.as_deref() {
+            let bak = path.with_extension("json.bak");
+            if !bak.exists() {
+                let _ = fs_util::write_atomic(&bak, prev.as_bytes(), 0o600);
+            }
+        }
     }
+
     let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    fs_util::write_atomic(&path, pretty.as_bytes(), 0o600).map_err(|e| e.to_string())?;
     Ok(format!("{status} hook in {}", path.display()))
 }
 
@@ -606,27 +705,27 @@ pub fn run() {
             let tts_state = app.state::<Arc<TtsEngine>>();
             tts_state.set_app_handle(handle.clone());
 
-            let popup = WebviewWindowBuilder::new(
-                app,
-                "popup",
-                WebviewUrl::App("popup.html".into()),
-            )
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .resizable(true)
-            .focused(false)
-            .skip_taskbar(true)
-            .visible(false)
-            .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-            .min_inner_size(240.0, POPUP_MIN_HEIGHT)
-            .shadow(false)
-            .accept_first_mouse(true)
-            .build()?;
+            let popup =
+                WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("popup.html".into()))
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .resizable(true)
+                    .focused(false)
+                    .skip_taskbar(true)
+                    .visible(false)
+                    .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
+                    .min_inner_size(POPUP_MIN_WIDTH, POPUP_MIN_HEIGHT)
+                    .shadow(false)
+                    .accept_first_mouse(true)
+                    .build()?;
 
             let saved_cfg = settings_store.get();
+            // Saved geometry is only persisted for the expanded popup
+            // (see persist_popup_geometry), so restore with the expanded
+            // minimums, not the smaller orb-mode minimum.
             let w = saved_cfg.popup_width.unwrap_or(POPUP_WIDTH).max(240.0);
-            let h = saved_cfg.popup_height.unwrap_or(POPUP_HEIGHT).max(POPUP_MIN_HEIGHT);
+            let h = saved_cfg.popup_height.unwrap_or(POPUP_HEIGHT).max(240.0);
             let _ = popup.set_size(LogicalSize::new(w, h));
             match saved_cfg.popup_x.zip(saved_cfg.popup_y) {
                 Some((x, y)) if position_on_any_monitor(&popup, x, y, w, h) => {
@@ -659,17 +758,14 @@ pub fn run() {
 
             // popup owns its own hide logic (respects pin)
 
-            let settings_window = WebviewWindowBuilder::new(
-                app,
-                "settings",
-                WebviewUrl::App("index.html".into()),
-            )
-            .title("Claude Voice Settings")
-            .inner_size(480.0, 820.0)
-            .min_inner_size(440.0, 560.0)
-            .resizable(true)
-            .visible(false)
-            .build()?;
+            let settings_window =
+                WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html".into()))
+                    .title("Claude Voice Settings")
+                    .inner_size(480.0, 820.0)
+                    .min_inner_size(440.0, 560.0)
+                    .resizable(true)
+                    .visible(false)
+                    .build()?;
             let _ = settings_window.hide();
 
             let enabled_item = CheckMenuItem::with_id(
@@ -687,8 +783,13 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let stop_item =
-                MenuItem::with_id(&handle, "stop_speaking", "Stop Speaking", true, None::<&str>)?;
+            let stop_item = MenuItem::with_id(
+                &handle,
+                "stop_speaking",
+                "Stop Speaking",
+                true,
+                None::<&str>,
+            )?;
             let pin_item = CheckMenuItem::with_id(
                 &handle,
                 "toggle_pin_popup",
@@ -704,18 +805,9 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let sessions_submenu = Submenu::with_id_and_items(
-                &handle,
-                "sessions_submenu",
-                "Sessions",
-                true,
-                &[],
-            )?;
-            rebuild_sessions_submenu(
-                &sessions_submenu,
-                &sessions_store.list(),
-                &handle,
-            )?;
+            let sessions_submenu =
+                Submenu::with_id_and_items(&handle, "sessions_submenu", "Sessions", true, &[])?;
+            rebuild_sessions_submenu(&sessions_submenu, &sessions_store.list(), &handle)?;
             let settings_item =
                 MenuItem::with_id(&handle, "open_settings", "Settings…", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(&handle, "quit", "Quit", true, None::<&str>)?;
@@ -747,16 +839,13 @@ pub fn run() {
             let handle_for_listen = handle.clone();
             handle.listen("sessions:changed", move |_| {
                 let list = sessions_for_listen.list();
-                if let Err(e) =
-                    rebuild_sessions_submenu(&submenu_listen, &list, &handle_for_listen)
+                if let Err(e) = rebuild_sessions_submenu(&submenu_listen, &list, &handle_for_listen)
                 {
                     eprintln!("[claude-voice] sessions submenu rebuild failed: {e}");
                 }
             });
 
-            let icon = tauri::image::Image::from_bytes(include_bytes!(
-                "../icons/tray.png"
-            ))?;
+            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -853,10 +942,7 @@ pub fn run() {
 
             {
                 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-                let shortcut = Shortcut::new(
-                    Some(Modifiers::SUPER | Modifiers::SHIFT),
-                    Code::KeyV,
-                );
+                let shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyV);
                 if let Err(e) = app.global_shortcut().register(shortcut) {
                     eprintln!("[claude-voice] global shortcut register failed: {e}");
                 }
@@ -933,20 +1019,12 @@ fn rebuild_sessions_submenu(
     for s in sessions {
         let enable_id = format!("session_enable_{}", s.session_id);
         let settings_id = format!("session_settings_{}", s.session_id);
-        let enable_item = CheckMenuItem::with_id(
-            handle,
-            &enable_id,
-            "Enabled",
-            true,
-            s.enabled,
-            None::<&str>,
-        )?;
+        let enable_item =
+            CheckMenuItem::with_id(handle, &enable_id, "Enabled", true, s.enabled, None::<&str>)?;
         let settings_item =
             MenuItem::with_id(handle, &settings_id, "Settings…", true, None::<&str>)?;
-        let session_sub = Submenu::with_items(handle, &s.label, true, &[
-            &enable_item,
-            &settings_item,
-        ])?;
+        let session_sub =
+            Submenu::with_items(handle, &s.label, true, &[&enable_item, &settings_item])?;
         submenu.append(&session_sub)?;
     }
     Ok(())
@@ -955,7 +1033,9 @@ fn rebuild_sessions_submenu(
 fn persist_popup_geometry(win: &tauri::Window) {
     let scale = win.scale_factor().unwrap_or(1.0);
     let Ok(size) = win.inner_size() else { return };
-    let Ok(pos) = win.outer_position() else { return };
+    let Ok(pos) = win.outer_position() else {
+        return;
+    };
     let lw = size.width as f64 / scale;
     let lh = size.height as f64 / scale;
     // Skip the minimized orb state so we don't persist the 240x240 geometry.

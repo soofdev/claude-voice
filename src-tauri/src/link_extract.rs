@@ -133,7 +133,18 @@ fn is_valid_url(url: &str) -> bool {
         }
         if matches!(
             c,
-            '\u{2026}' | '\u{2018}' | '\u{2019}' | '\u{201C}' | '\u{201D}' | '`' | '{' | '}' | '<' | '>' | '|' | '^'
+            '\u{2026}'
+                | '\u{2018}'
+                | '\u{2019}'
+                | '\u{201C}'
+                | '\u{201D}'
+                | '`'
+                | '{'
+                | '}'
+                | '<'
+                | '>'
+                | '|'
+                | '^'
         ) {
             return false;
         }
@@ -153,10 +164,7 @@ fn is_valid_url(url: &str) -> bool {
         return false;
     };
 
-    let host: &str = rest
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("");
+    let host: &str = rest.split(['/', '?', '#']).next().unwrap_or("");
 
     is_valid_host(host)
 }
@@ -346,12 +354,18 @@ mod tests {
 
     #[test]
     fn label_strips_scheme_and_www() {
-        assert_eq!(friendly_label("https://www.example.com/path"), "(example.com link)");
+        assert_eq!(
+            friendly_label("https://www.example.com/path"),
+            "(example.com link)"
+        );
     }
 
     #[test]
     fn label_keeps_subdomain() {
-        assert_eq!(friendly_label("https://docs.rust-lang.org"), "(docs.rust-lang.org link)");
+        assert_eq!(
+            friendly_label("https://docs.rust-lang.org"),
+            "(docs.rust-lang.org link)"
+        );
     }
 
     // ── parse_md_link ──

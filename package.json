@@ -1,7 +1,15 @@
 {
   "name": "claude-voice",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0-alpha.1",
+  "description": "macOS menu-bar companion that gives AI coding agents a voice.",
+  "license": "MIT",
+  "author": "Laith Zraikat <zraikat@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soofdev/claude-voice.git"
+  },
+  "homepage": "https://github.com/soofdev/claude-voice",
   "type": "module",
   "scripts": {
     "tauri": "tauri"

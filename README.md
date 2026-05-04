@@ -32,7 +32,7 @@ An MV3 extension in [`chrome-extension/`](./chrome-extension) bridges browser-ba
 ### Voice
 
 - **Three backends.** Pick your tradeoff per message:
-  - **System voice** (`say`) — free, always works, no keys.
+  - **System voice** (`say`) — *default*, free, always works, no keys.
   - **Browser voice** (Web Speech API) — free, offline, real-time word-boundary highlighting.
   - **ElevenLabs** — premium quality, character-level timing, cached MP3 per message so replays never re-bill the API.
 - **Automatic fallback.** If ElevenLabs fails (quota, rate limit, network), the pipeline speaks the message with `say` and surfaces a visible warning. You always hear something.
@@ -60,14 +60,20 @@ An MV3 extension in [`chrome-extension/`](./chrome-extension) bridges browser-ba
 
 ## Install
 
-Claude Voice is currently distributed as an unsigned build. You'll need to build from source or download a release and bypass Gatekeeper.
+Claude Voice ships as an **unsigned** build — no Apple Developer ID. Either build from source, or grab a `.dmg` from the [releases page](https://github.com/soofdev/claude-voice/releases) and clear the Gatekeeper quarantine bit:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Claude Voice.app"
+```
+
+(Run this once after dragging the app from the DMG to `/Applications`. Without it, macOS will refuse to launch with a "damaged / can't be opened" error — that's Gatekeeper, not actual damage.)
 
 ### Build the app
 
 Requirements: macOS, Rust (stable), Node 18+, Xcode command-line tools.
 
 ```bash
-git clone https://github.com/<your-fork>/claude-voice
+git clone https://github.com/soofdev/claude-voice
 cd claude-voice
 npm install
 npm run tauri dev   # development
@@ -96,10 +102,10 @@ For Replit / web-based agent support:
 
 ### API keys (optional)
 
-- **ElevenLabs** (premium voice + speech-to-text): Settings → Voice backend → paste your key.
-- **Anthropic** (summarizer): Settings → Summarizer → paste your key.
+- **ElevenLabs** (premium voice + speech-to-text) — sign up at [elevenlabs.io](https://elevenlabs.io), then Settings → Voice backend → paste your key.
+- **Anthropic** (summarizer) — get a key from [console.anthropic.com](https://console.anthropic.com), then Settings → Summarizer → paste your key.
 
-Both are optional. You can run Claude Voice with zero keys on the System or Browser voice backends.
+Both are optional. The default backend is the macOS **System voice** (`say`) which works out of the box with no keys, no network, and no setup.
 
 ## Shortcuts
 
@@ -131,7 +137,15 @@ In the popup:
 
 All audio, history, session preferences, and voice recordings stay on your machine in `~/Library/Application Support/claude-voice/`. Outbound network traffic goes only to the voice, summarizer, and STT providers you configure — only when those features are enabled. No analytics. No telemetry.
 
+`settings.json`, `sessions.json`, and `history.jsonl` are written with `0600` (owner read/write only) and the parent directory is `0700`. Atomic temp-file-and-rename, so a crash mid-write can't leave a half-written config.
+
 The Chrome extension only has host permissions for `https://replit.com/*` (to observe the agent timeline) and `http://127.0.0.1/*` (to talk to your local Claude Voice server). It never sends data to third parties.
+
+## Threat model
+
+Claude Voice is built for a **single-user macOS desktop**. The local HTTP server on `127.0.0.1:8765` is unauthenticated by design — it's expected that anything running as your user can already read `~/Library/Application Support/claude-voice/` directly, so a token check on the loopback wouldn't actually raise the bar. Browsers can't reach the server because the JSON endpoints fail CORS preflight, and rate / body-size limits are pinned per route.
+
+If you run on a **shared / multi-user machine**, treat the bridge endpoints (`/speak`, `/hook/stop`, `/bridge/pending/:sid`) as accessible to anyone with a shell on the same box. In particular, `/bridge/pending/:sid` will hand a queued reply to whoever asks for it first — so on a shared box, a co-tenant could intercept a Replit reply before the Chrome extension fetches it. Don't run Claude Voice in that environment, or scope it tighter via firewall rules.
 
 ## Platform support
 
@@ -140,10 +154,12 @@ The Chrome extension only has host permissions for `https://replit.com/*` (to ob
 
 ## Status
 
-Early. Expect rough edges around unsigned-app distribution, first-run permissions, and anything outside the happy path. Issues and PRs welcome.
+Early. Expect rough edges around unsigned-app distribution, first-run permissions, and anything outside the happy path.
 
-See [PRD.md](./PRD.md) for the full feature surface.
+## Contributing
+
+Issues and PRs welcome. CI gates every push on `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib` — please run those locally before opening a PR. (`cd src-tauri` first; the Cargo workspace lives there.) The frontend is plain HTML/CSS/JS so there's no separate build step beyond `npm install`.
 
 ## License
 
-MIT (or whichever you prefer — see `LICENSE`).
+MIT — see [LICENSE](./LICENSE).

@@ -62,6 +62,11 @@ pub struct Settings {
     pub summary_threshold_chars: u32,
     #[serde(default = "default_summary_brevity")]
     pub summary_brevity: String,
+    // When true, recent spoken messages from the same session (up to 5
+    // within the last 30 minutes) are passed to the summarizer as
+    // context, and it's instructed to skip anything already covered.
+    #[serde(default)]
+    pub avoid_repetition: bool,
 }
 
 fn default_true() -> bool {
@@ -137,13 +142,13 @@ impl Default for Settings {
             summary_model: default_summary_model(),
             summary_threshold_chars: default_summary_threshold(),
             summary_brevity: default_summary_brevity(),
+            avoid_repetition: false,
         }
     }
 }
 
 fn settings_path() -> PathBuf {
-    let base = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
+    let base = dirs::config_dir().unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"));
     base.join("claude-voice").join("settings.json")
 }
 
@@ -151,17 +156,26 @@ impl Settings {
     pub fn load() -> Self {
         let path = settings_path();
         match std::fs::read_to_string(&path) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+            Ok(s) => {
+                // Tighten perms on upgrade from versions that left the file
+                // world-readable. Best-effort; non-fatal if it fails.
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+                }
+                serde_json::from_str(&s).unwrap_or_default()
+            }
             Err(_) => Self::default(),
         }
     }
 
     pub fn save(&self) -> Result<()> {
         let path = settings_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, serde_json::to_string_pretty(self)?)?;
+        let bytes = serde_json::to_string_pretty(self)?.into_bytes();
+        // 0o600 because settings.json holds ElevenLabs and Anthropic API keys.
+        // The parent dir (~/.config/claude-voice) is ours, so tighten it too.
+        crate::fs_util::write_atomic_with_dir_mode(&path, &bytes, 0o600, 0o700)?;
         Ok(())
     }
 }
