@@ -32,7 +32,7 @@ An MV3 extension in [`chrome-extension/`](./chrome-extension) bridges browser-ba
 ### Voice
 
 - **Three backends.** Pick your tradeoff per message:
-  - **System voice** (`say`) — free, always works, no keys.
+  - **System voice** (`say`) — *default*, free, always works, no keys.
   - **Browser voice** (Web Speech API) — free, offline, real-time word-boundary highlighting.
   - **ElevenLabs** — premium quality, character-level timing, cached MP3 per message so replays never re-bill the API.
 - **Automatic fallback.** If ElevenLabs fails (quota, rate limit, network), the pipeline speaks the message with `say` and surfaces a visible warning. You always hear something.
@@ -60,14 +60,20 @@ An MV3 extension in [`chrome-extension/`](./chrome-extension) bridges browser-ba
 
 ## Install
 
-Claude Voice is currently distributed as an unsigned build. You'll need to build from source or download a release and bypass Gatekeeper.
+Claude Voice ships as an **unsigned** build — no Apple Developer ID. Either build from source, or grab a `.dmg` from the [releases page](https://github.com/soofdev/claude-voice/releases) and clear the Gatekeeper quarantine bit:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Claude Voice.app"
+```
+
+(Run this once after dragging the app from the DMG to `/Applications`. Without it, macOS will refuse to launch with a "damaged / can't be opened" error — that's Gatekeeper, not actual damage.)
 
 ### Build the app
 
 Requirements: macOS, Rust (stable), Node 18+, Xcode command-line tools.
 
 ```bash
-git clone https://github.com/<your-fork>/claude-voice
+git clone https://github.com/soofdev/claude-voice
 cd claude-voice
 npm install
 npm run tauri dev   # development
@@ -96,10 +102,10 @@ For Replit / web-based agent support:
 
 ### API keys (optional)
 
-- **ElevenLabs** (premium voice + speech-to-text): Settings → Voice backend → paste your key.
-- **Anthropic** (summarizer): Settings → Summarizer → paste your key.
+- **ElevenLabs** (premium voice + speech-to-text) — sign up at [elevenlabs.io](https://elevenlabs.io), then Settings → Voice backend → paste your key.
+- **Anthropic** (summarizer) — get a key from [console.anthropic.com](https://console.anthropic.com), then Settings → Summarizer → paste your key.
 
-Both are optional. You can run Claude Voice with zero keys on the System or Browser voice backends.
+Both are optional. The default backend is the macOS **System voice** (`say`) which works out of the box with no keys, no network, and no setup.
 
 ## Shortcuts
 
@@ -148,9 +154,11 @@ If you run on a **shared / multi-user machine**, treat the bridge endpoints (`/s
 
 ## Status
 
-Early. Expect rough edges around unsigned-app distribution, first-run permissions, and anything outside the happy path. Issues and PRs welcome.
+Early. Expect rough edges around unsigned-app distribution, first-run permissions, and anything outside the happy path.
 
-See [PRD.md](./PRD.md) for the full feature surface.
+## Contributing
+
+Issues and PRs welcome. CI gates every push on `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --lib` — please run those locally before opening a PR. (`cd src-tauri` first; the Cargo workspace lives there.) The frontend is plain HTML/CSS/JS so there's no separate build step beyond `npm install`.
 
 ## License
 
