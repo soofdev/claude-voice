@@ -49,7 +49,7 @@ impl SessionsStore {
     pub fn list(&self) -> Vec<SessionInfo> {
         let guard = self.0.lock().unwrap();
         let mut out: Vec<SessionInfo> = guard.values().cloned().collect();
-        out.sort_by(|a, b| b.last_seen_ms.cmp(&a.last_seen_ms));
+        out.sort_by_key(|s| std::cmp::Reverse(s.last_seen_ms));
         out
     }
 
