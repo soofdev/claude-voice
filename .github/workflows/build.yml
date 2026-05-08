@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master, replit-voice]
+    branches: [master, stage, replit-voice]
     tags: ["v*"]
   pull_request:
     branches: [master]
@@ -83,6 +83,20 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      # Windows MSI/NSIS bundlers reject SemVer prerelease suffixes
+      # (e.g. -alpha.1) — the version field must be numeric-only.
+      # Strip it for the Windows build only; the resulting installer is
+      # stamped as the underlying release version (e.g. 1.0.0). Tag-name
+      # and GitHub release title still carry the full SemVer.
+      - name: Strip prerelease suffix from version (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          cd src-tauri
+          jq '.version |= sub("-.*$"; "")' tauri.conf.json > tauri.conf.json.tmp
+          mv tauri.conf.json.tmp tauri.conf.json
+          grep '"version"' tauri.conf.json
 
       # Tags containing -alpha / -beta / -rc are marked prerelease so
       # they don't show up as the latest stable on the GitHub release

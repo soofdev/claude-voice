@@ -228,18 +228,19 @@ impl TtsEngine {
         let pid = *self.inner.current_pid.lock().unwrap();
         if let Some(pid) = pid {
             #[cfg(unix)]
-            unsafe {
-                libc::kill(pid as i32, libc::SIGSTOP);
+            {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGSTOP);
+                }
+                *self.inner.paused.lock().unwrap() = true;
+                if let Some(app) = self.app.get() {
+                    let _ = app.emit("voice:paused", ());
+                }
             }
             #[cfg(not(unix))]
             {
                 let _ = pid;
                 eprintln!("[claude-voice] pause not supported on this platform");
-                return;
-            }
-            *self.inner.paused.lock().unwrap() = true;
-            if let Some(app) = self.app.get() {
-                let _ = app.emit("voice:paused", ());
             }
         }
     }
@@ -248,17 +249,18 @@ impl TtsEngine {
         let pid = *self.inner.current_pid.lock().unwrap();
         if let Some(pid) = pid {
             #[cfg(unix)]
-            unsafe {
-                libc::kill(pid as i32, libc::SIGCONT);
+            {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGCONT);
+                }
+                *self.inner.paused.lock().unwrap() = false;
+                if let Some(app) = self.app.get() {
+                    let _ = app.emit("voice:resumed", ());
+                }
             }
             #[cfg(not(unix))]
             {
                 let _ = pid;
-                return;
-            }
-            *self.inner.paused.lock().unwrap() = false;
-            if let Some(app) = self.app.get() {
-                let _ = app.emit("voice:resumed", ());
             }
         }
     }
