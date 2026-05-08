@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master, replit-voice]
+    branches: [master, stage, replit-voice]
     tags: ["v*"]
   pull_request:
     branches: [master]
