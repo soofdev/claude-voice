@@ -8,181 +8,200 @@
     <script type="module" src="/main.js" defer></script>
   </head>
   <body>
-    <main class="container">
+    <header class="topbar">
       <h1>Claude Voice</h1>
+      <label class="master-toggle" title="Speaking on/off">
+        <input type="checkbox" id="enabled" />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+    </header>
 
-      <section class="group">
-        <label class="row">
-          <input type="checkbox" id="enabled" />
-          <span>Speaking enabled</span>
-        </label>
-        <label class="row">
-          <input type="checkbox" id="show-popup" />
-          <span>Show popup while speaking</span>
-        </label>
-        <div class="field">
-          <label for="dismiss-delay">
-            Auto-hide popup after speech ends:
-            <span id="dismiss-delay-value">1.5</span> s
+    <div id="setup-banner" class="banner" hidden>
+      <div class="banner-text">
+        <strong>Install the Claude Code hook</strong>
+        <p>Required to hear assistant responses. Adds one entry to ~/.claude/settings.json.</p>
+      </div>
+      <button id="install-hook-banner" class="primary" type="button">Install hook</button>
+    </div>
+
+    <main class="layout">
+      <nav class="sidebar" role="tablist">
+        <button class="tab active" data-tab="general" type="button" role="tab">General</button>
+        <button class="tab" data-tab="voice" type="button" role="tab">Voice</button>
+        <button class="tab" data-tab="summary" type="button" role="tab">Summary</button>
+        <button class="tab" data-tab="sessions" type="button" role="tab">Sessions</button>
+        <button class="tab" data-tab="setup" type="button" role="tab">Setup</button>
+      </nav>
+
+      <div class="panels">
+        <section class="panel active" data-panel="general" role="tabpanel">
+          <h2>Popup</h2>
+          <label class="row">
+            <input type="checkbox" id="show-popup" />
+            <span>Show popup while speaking</span>
           </label>
-          <input type="range" id="dismiss-delay" min="0" max="10000" step="500" />
-        </div>
-        <div class="field">
-          <label for="orb-style">Orb style (minimized mode)</label>
-          <select id="orb-style">
-            <option value="glass">Glass — polished sphere with highlight</option>
-            <option value="plasma">Plasma — animated nebula swirl</option>
-            <option value="iridescent">Iridescent — pearly hue-shift</option>
-            <option value="energy">Energy — bright core with ripples</option>
-          </select>
-        </div>
-      </section>
-
-      <section class="group">
-        <h2>Voice backend</h2>
-        <div class="field">
-          <label for="backend">Engine</label>
-          <select id="backend">
-            <option value="say">macOS say (free, built-in)</option>
-            <option value="browser">Browser voices (free, built-in)</option>
-            <option value="elevenlabs">ElevenLabs (AI voice)</option>
-          </select>
-        </div>
-
-        <div id="say-settings">
           <div class="field">
-            <label for="voice">System voice</label>
-            <select id="voice"></select>
-          </div>
-          <div class="field">
-            <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
-            <input type="range" id="rate" min="120" max="320" step="5" />
-          </div>
-        </div>
-
-        <div id="browser-settings" hidden>
-          <div class="field">
-            <label for="browser-voice">Voice</label>
-            <select id="browser-voice"></select>
-          </div>
-          <div class="field">
-            <label for="browser-rate">
-              Rate: <span id="browser-rate-value">1.0</span>x
+            <label for="dismiss-delay">
+              Auto-hide after speech ends:
+              <span id="dismiss-delay-value">1.5</span> s
             </label>
-            <input type="range" id="browser-rate" min="0.5" max="2.0" step="0.1" />
-          </div>
-        </div>
-
-        <div id="eleven-settings" hidden>
-          <div class="field">
-            <label for="eleven-key">ElevenLabs API key</label>
-            <input type="password" id="eleven-key" placeholder="xi-..." />
+            <input type="range" id="dismiss-delay" min="0" max="10000" step="500" />
           </div>
           <div class="field">
-            <label for="eleven-voice">Voice</label>
-            <div class="row">
-              <select id="eleven-voice" style="flex:1"></select>
-              <button id="refresh-voices" type="button">Refresh</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="eleven-model">Model</label>
-            <select id="eleven-model">
-              <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option>
-              <option value="eleven_turbo_v2_5">Turbo v2.5</option>
-              <option value="eleven_multilingual_v2">Multilingual v2 (quality)</option>
+            <label for="orb-style">Orb style (minimized mode)</label>
+            <select id="orb-style">
+              <option value="glass">Glass — polished sphere with highlight</option>
+              <option value="plasma">Plasma — animated nebula swirl</option>
+              <option value="iridescent">Iridescent — pearly hue-shift</option>
+              <option value="energy">Energy — bright core with ripples</option>
             </select>
           </div>
-          <div class="field">
-            <label for="eleven-speed">
-              Speed: <span id="eleven-speed-value">0.9</span>×
-            </label>
-            <input type="range" id="eleven-speed" min="0.7" max="1.2" step="0.05" />
+        </section>
+
+        <section class="panel" data-panel="voice" role="tabpanel" hidden>
+          <h2>Engine</h2>
+          <div class="segmented" id="backend-seg" role="radiogroup">
+            <button type="button" class="seg" data-value="say" role="radio">System</button>
+            <button type="button" class="seg" data-value="browser" role="radio">Browser</button>
+            <button type="button" class="seg" data-value="elevenlabs" role="radio">ElevenLabs</button>
           </div>
-        </div>
-      </section>
+          <input type="hidden" id="backend" />
 
-      <section class="group">
-        <h2>Summarize with Claude Haiku</h2>
-        <label class="row">
-          <input type="checkbox" id="summarize" />
-          <span>Rephrase long messages before speaking</span>
-        </label>
-        <div class="field">
-          <label for="anthropic-key">Anthropic API key</label>
-          <input type="password" id="anthropic-key" placeholder="sk-ant-..." />
-        </div>
-        <div class="field">
-          <label for="summary-model">Model</label>
-          <input type="text" id="summary-model" />
-        </div>
-        <div class="field">
-          <label for="summary-threshold">
-            Summarize when longer than
-            <span id="threshold-value">180</span> chars
+          <div id="say-settings" class="subform">
+            <div class="field">
+              <label for="voice">System voice</label>
+              <select id="voice"></select>
+            </div>
+            <div class="field">
+              <label for="rate">Rate: <span id="rate-value">200</span> wpm</label>
+              <input type="range" id="rate" min="120" max="320" step="5" />
+            </div>
+          </div>
+
+          <div id="browser-settings" class="subform" hidden>
+            <div class="field">
+              <label for="browser-voice">Voice</label>
+              <select id="browser-voice"></select>
+            </div>
+            <div class="field">
+              <label for="browser-rate">
+                Rate: <span id="browser-rate-value">1.0</span>×
+              </label>
+              <input type="range" id="browser-rate" min="0.5" max="2.0" step="0.1" />
+            </div>
+          </div>
+
+          <div id="eleven-settings" class="subform" hidden>
+            <div class="field">
+              <label for="eleven-key">ElevenLabs API key</label>
+              <input type="password" id="eleven-key" placeholder="xi-..." />
+            </div>
+            <div class="field">
+              <label for="eleven-voice">Voice</label>
+              <div class="row">
+                <select id="eleven-voice" style="flex:1"></select>
+                <button id="refresh-voices" type="button">Refresh</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="eleven-model">Model</label>
+              <select id="eleven-model">
+                <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option>
+                <option value="eleven_turbo_v2_5">Turbo v2.5</option>
+                <option value="eleven_multilingual_v2">Multilingual v2 (quality)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="eleven-speed">
+                Speed: <span id="eleven-speed-value">0.9</span>×
+              </label>
+              <input type="range" id="eleven-speed" min="0.7" max="1.2" step="0.05" />
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="summary" role="tabpanel" hidden>
+          <h2>Smarter summaries</h2>
+          <p class="hint">Rephrase long responses into short spoken-word form. Requires an Anthropic API key.</p>
+          <label class="row">
+            <input type="checkbox" id="summarize" />
+            <span>Rephrase long messages before speaking</span>
           </label>
-          <input type="range" id="summary-threshold" min="0" max="1000" step="20" />
-        </div>
-        <div class="field">
-          <label for="summary-brevity">Brevity</label>
-          <select id="summary-brevity">
-            <option value="detailed">Detailed — keep everything important</option>
-            <option value="balanced">Balanced — key points, drop minor details</option>
-            <option value="brief">Brief — main idea in 1–2 sentences</option>
-            <option value="minimal">Minimal — just the main point</option>
-          </select>
-        </div>
-        <label class="row">
-          <input type="checkbox" id="avoid-repetition" />
-          <span>Don't repeat — use recent spoken messages as context</span>
-        </label>
-      </section>
-
-      <section class="group actions">
-        <button id="test">Test voice</button>
-        <button id="stop">Stop</button>
-        <button id="save" class="primary">Save</button>
-      </section>
-
-      <section class="group">
-        <h2>Claude Code sessions</h2>
-        <p class="hint">
-          Mute or rename any open Claude Code session. New sessions default
-          to on; toggle off to silence them.
-        </p>
-        <label class="row">
-          <input type="checkbox" id="speak-prefix" />
-          <span>Announce session name before speaking</span>
-        </label>
-        <div class="field">
-          <label for="prefix-skip">
-            Skip announcement if same session spoke within
-            <span id="prefix-skip-value">30</span> s
+          <div class="field">
+            <label for="anthropic-key">Anthropic API key</label>
+            <input type="password" id="anthropic-key" placeholder="sk-ant-..." />
+          </div>
+          <div class="field">
+            <label for="summary-model">Model</label>
+            <input type="text" id="summary-model" />
+          </div>
+          <div class="field">
+            <label for="summary-threshold">
+              Summarize when longer than
+              <span id="threshold-value">180</span> chars
+            </label>
+            <input type="range" id="summary-threshold" min="0" max="1000" step="20" />
+          </div>
+          <div class="field">
+            <label for="summary-brevity">Brevity</label>
+            <select id="summary-brevity">
+              <option value="detailed">Detailed — keep everything important</option>
+              <option value="balanced">Balanced — key points, drop minor details</option>
+              <option value="brief">Brief — main idea in 1–2 sentences</option>
+              <option value="minimal">Minimal — just the main point</option>
+            </select>
+          </div>
+          <label class="row">
+            <input type="checkbox" id="avoid-repetition" />
+            <span>Don't repeat — use recent spoken messages as context</span>
           </label>
-          <input type="range" id="prefix-skip" min="0" max="120000" step="5000" />
-        </div>
-        <ul id="sessions-list" class="sessions"></ul>
-        <p id="sessions-empty" class="hint">No sessions detected yet.</p>
-      </section>
+        </section>
 
-      <section class="group">
-        <h2>Claude Code hook</h2>
-        <div class="field">
-          <label for="port">HTTP port</label>
-          <input type="number" id="port" min="1024" max="65535" />
-        </div>
-        <code id="hook-cmd" class="hook"></code>
-        <div class="row">
-          <button id="install-hook" type="button" class="primary">Install / Update hook</button>
-          <button id="copy-hook" type="button">Copy</button>
-        </div>
-        <span class="hint">
-          Click Install to write the hook into ~/.claude/settings.json, or
-          Copy to paste it yourself.
-        </span>
-      </section>
+        <section class="panel" data-panel="sessions" role="tabpanel" hidden>
+          <h2>Claude Code sessions</h2>
+          <p class="hint">
+            Mute or rename any open Claude Code session. New sessions default
+            to on; toggle off to silence them.
+          </p>
+          <label class="row">
+            <input type="checkbox" id="speak-prefix" />
+            <span>Announce session name before speaking</span>
+          </label>
+          <div class="field">
+            <label for="prefix-skip">
+              Skip announcement if same session spoke within
+              <span id="prefix-skip-value">30</span> s
+            </label>
+            <input type="range" id="prefix-skip" min="0" max="120000" step="5000" />
+          </div>
+          <ul id="sessions-list" class="sessions"></ul>
+          <p id="sessions-empty" class="hint">No sessions detected yet.</p>
+        </section>
 
-      <p id="status" class="status"></p>
+        <section class="panel" data-panel="setup" role="tabpanel" hidden>
+          <h2>Claude Code hook</h2>
+          <p class="hint">
+            Click Install to write the hook into ~/.claude/settings.json, or
+            copy the command and paste it yourself.
+          </p>
+          <div class="field">
+            <label for="port">HTTP port</label>
+            <input type="number" id="port" min="1024" max="65535" />
+          </div>
+          <code id="hook-cmd" class="hook"></code>
+          <div class="row">
+            <button id="install-hook" type="button" class="primary">Install / Update hook</button>
+            <button id="copy-hook" type="button">Copy</button>
+          </div>
+        </section>
+      </div>
     </main>
+
+    <footer class="actionbar">
+      <span id="status" class="status" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button id="test" type="button">Test voice</button>
+      <button id="stop" type="button">Stop</button>
+    </footer>
   </body>
 </html>
