@@ -3,11 +3,7 @@ const { event } = window.__TAURI__;
 
 event.listen("voice:error", (e) => {
   const msg = e.payload?.message ?? "Unknown error";
-  const s = document.getElementById("status");
-  if (s) {
-    s.textContent = msg;
-    s.style.color = "#d25b5b";
-  }
+  setStatus(msg, true);
 });
 
 event.listen("settings:changed", (e) => {
@@ -17,6 +13,7 @@ event.listen("settings:changed", (e) => {
 event.listen("sessions:changed", () => loadSessions());
 
 event.listen("session:focus", async (e) => {
+  switchTab("sessions");
   await loadSessions();
   const id = e.payload;
   const list = el("sessions-list");
@@ -179,6 +176,8 @@ const el = (id) => document.getElementById(id);
 
 let elevenVoices = [];
 let currentSettings = {};
+let saveTimer = null;
+let isLoading = true;
 
 const PRESET_ELEVEN_VOICES = [
   { id: "fvVBPXuE7f1iX3dZLKFy", name: "Preset A" },
@@ -227,6 +226,7 @@ async function loadSettings() {
   el("browser-rate").value = settings.browser_rate ?? 1.0;
   el("browser-rate-value").textContent = Number(settings.browser_rate ?? 1.0).toFixed(1);
   el("backend").value = settings.backend;
+  setBackendSegment(settings.backend);
 
   const voiceSel = el("voice");
   voiceSel.innerHTML = "";
@@ -274,6 +274,13 @@ function populateElevenVoices(voices, selectedId) {
     opt.textContent = v.name ? `${v.name} (${v.id.slice(0, 6)}…)` : v.id;
     if (v.id === selectedId) opt.selected = true;
     sel.appendChild(opt);
+  }
+}
+
+function setBackendSegment(value) {
+  for (const btn of document.querySelectorAll("#backend-seg .seg")) {
+    btn.classList.toggle("active", btn.dataset.value === value);
+    btn.setAttribute("aria-checked", btn.dataset.value === value ? "true" : "false");
   }
 }
 
@@ -332,38 +339,38 @@ function collect() {
   };
 }
 
-async function save() {
-  const btn = el("save");
+function scheduleAutosave() {
+  if (isLoading) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(autosave, 300);
+}
+
+async function autosave() {
+  saveTimer = null;
   try {
     const next = collect();
     await invoke("set_settings", { new: next });
     currentSettings = next;
     el("hook-cmd").textContent = await invoke("hook_command");
-    flashSaveButton(btn, "Saved ✓", "saved");
+    setStatus("Saved", false, 1000);
   } catch (e) {
     setStatus(`Error: ${e}`, true);
-    flashSaveButton(btn, "Error", "error");
   }
 }
 
-function flashSaveButton(btn, label, cls) {
-  const original = btn.dataset.label || btn.textContent;
-  btn.dataset.label = original;
-  btn.disabled = true;
-  btn.textContent = label;
-  btn.classList.add(cls);
-  setTimeout(() => {
-    btn.classList.remove(cls);
-    btn.textContent = original;
-    btn.disabled = false;
-  }, 1500);
-}
-
-function setStatus(msg, isError = false) {
+function setStatus(msg, isError = false, timeoutMs = 3500) {
   const s = el("status");
   s.textContent = msg;
-  s.style.color = isError ? "#d25b5b" : "";
-  setTimeout(() => (s.textContent = ""), 3500);
+  s.classList.toggle("error", !!isError);
+  s.classList.toggle("ok", !isError && msg === "Saved");
+  if (timeoutMs > 0) {
+    setTimeout(() => {
+      if (s.textContent === msg) {
+        s.textContent = "";
+        s.classList.remove("error", "ok");
+      }
+    }, timeoutMs);
+  }
 }
 
 async function refreshElevenVoices() {
@@ -384,11 +391,46 @@ async function refreshElevenVoices() {
   }
 }
 
+function switchTab(name) {
+  for (const btn of document.querySelectorAll(".tab")) {
+    btn.classList.toggle("active", btn.dataset.tab === name);
+  }
+  for (const panel of document.querySelectorAll(".panel")) {
+    const match = panel.dataset.panel === name;
+    panel.classList.toggle("active", match);
+    panel.hidden = !match;
+  }
+}
+
+async function refreshHookBanner() {
+  try {
+    const installed = await invoke("hook_installed");
+    el("setup-banner").hidden = !!installed;
+  } catch (e) {
+    console.error("hook_installed failed", e);
+  }
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
+  isLoading = true;
   await loadSettings();
   await loadSessions();
+  await refreshHookBanner();
+  isLoading = false;
 
-  el("backend").addEventListener("change", updateBackendVisibility);
+  for (const btn of document.querySelectorAll(".tab")) {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  }
+
+  for (const seg of document.querySelectorAll("#backend-seg .seg")) {
+    seg.addEventListener("click", () => {
+      el("backend").value = seg.dataset.value;
+      setBackendSegment(seg.dataset.value);
+      updateBackendVisibility();
+      scheduleAutosave();
+    });
+  }
+
   el("rate").addEventListener("input", (e) => {
     el("rate-value").textContent = e.target.value;
   });
@@ -408,11 +450,52 @@ window.addEventListener("DOMContentLoaded", async () => {
     el("eleven-speed-value").textContent = Number(e.target.value).toFixed(2);
   });
 
-  el("save").addEventListener("click", save);
+  // Wire autosave to every input/change-emitting control inside .panels.
+  // The master toggle in the topbar gets the same treatment.
+  const watch = [
+    "enabled",
+    "show-popup",
+    "dismiss-delay",
+    "orb-style",
+    "voice",
+    "rate",
+    "browser-voice",
+    "browser-rate",
+    "eleven-key",
+    "eleven-voice",
+    "eleven-model",
+    "eleven-speed",
+    "summarize",
+    "anthropic-key",
+    "summary-model",
+    "summary-threshold",
+    "summary-brevity",
+    "avoid-repetition",
+    "speak-prefix",
+    "prefix-skip",
+    "port",
+  ];
+  for (const id of watch) {
+    const node = el(id);
+    if (!node) continue;
+    const evt =
+      node.tagName === "SELECT" ||
+      (node.type === "checkbox" || node.type === "color")
+        ? "change"
+        : "input";
+    node.addEventListener(evt, scheduleAutosave);
+    if (node.type === "range") {
+      node.addEventListener("change", scheduleAutosave);
+    }
+  }
+
   el("refresh-voices").addEventListener("click", refreshElevenVoices);
 
   el("test").addEventListener("click", async () => {
-    await invoke("set_settings", { new: collect() });
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      await autosave();
+    }
     await invoke("test_speak", {
       text: "Hello. This is Claude speaking through the configured voice engine.",
     });
@@ -425,16 +508,18 @@ window.addEventListener("DOMContentLoaded", async () => {
     setStatus("Copied.");
   });
 
-  el("install-hook").addEventListener("click", async () => {
-    const btn = el("install-hook");
-    btn.disabled = true;
+  const installHook = async (sourceBtn) => {
+    sourceBtn.disabled = true;
     try {
       const result = await invoke("install_hook");
       setStatus(result);
+      await refreshHookBanner();
     } catch (e) {
       setStatus(`Install failed: ${e}`, true);
     } finally {
-      btn.disabled = false;
+      sourceBtn.disabled = false;
     }
-  });
+  };
+  el("install-hook").addEventListener("click", (e) => installHook(e.currentTarget));
+  el("install-hook-banner").addEventListener("click", (e) => installHook(e.currentTarget));
 });

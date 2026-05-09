@@ -447,6 +447,10 @@ stopBtn.addEventListener("click", () => {
   core.invoke("stop_speaking");
 });
 pinBtn.addEventListener("click", () => core.invoke("toggle_pin_popup"));
+const settingsBtn = document.getElementById("settings-btn");
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", () => core.invoke("open_settings"));
+}
 historyBtn.addEventListener("click", () => toggleHistory());
 historyBtn.classList.add("active");
 loadHistory();
