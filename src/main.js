@@ -7,7 +7,19 @@ event.listen("voice:error", (e) => {
 });
 
 event.listen("settings:changed", (e) => {
-  if (e.payload) currentSettings = e.payload;
+  if (!e.payload) return;
+  currentSettings = e.payload;
+  // Re-sync controls whose state can be flipped from another window
+  // (popup bottom-bar toggle, tray menu, etc.) so this view doesn't
+  // drift. Set isLoading so the change handlers don't bounce the
+  // update back through autosave.
+  const wasLoading = isLoading;
+  isLoading = true;
+  const toggle = el("enabled");
+  if (toggle && typeof e.payload.enabled === "boolean") {
+    toggle.checked = e.payload.enabled;
+  }
+  isLoading = wasLoading;
 });
 
 event.listen("sessions:changed", () => loadSessions());

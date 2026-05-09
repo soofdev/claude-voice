@@ -572,6 +572,22 @@ fn open_settings(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn toggle_speaking(app: tauri::AppHandle) {
+    let store = app.state::<Arc<SettingsStore>>();
+    let mut cfg = store.get();
+    cfg.enabled = !cfg.enabled;
+    let _ = store.update(cfg.clone());
+    if let Some(refs) = app.try_state::<Arc<MenuRefs>>() {
+        let _ = refs.enabled.set_checked(cfg.enabled);
+    }
+    if !cfg.enabled {
+        let tts = app.state::<Arc<TtsEngine>>();
+        tts.stop();
+    }
+    let _ = app.emit("settings:changed", cfg);
+}
+
+#[tauri::command]
 fn hook_installed() -> bool {
     let Some(home) = dirs::home_dir() else {
         return false;
@@ -724,6 +740,7 @@ pub fn run() {
             install_hook,
             hook_installed,
             open_settings,
+            toggle_speaking,
             set_history_panel_width,
             get_sessions,
             set_session_enabled,

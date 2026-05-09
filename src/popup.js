@@ -451,6 +451,21 @@ const settingsBtn = document.getElementById("settings-btn");
 if (settingsBtn) {
   settingsBtn.addEventListener("click", () => core.invoke("open_settings"));
 }
+const enabledToggle = document.getElementById("enabled-toggle");
+if (enabledToggle) {
+  // Optimistic flip: let the checkbox visually toggle on click, then
+  // ask the backend to mirror it. The settings:changed event that
+  // fires from toggle_speaking will overwrite the checked state to
+  // match the authoritative cfg.enabled, so a failed write self-heals.
+  enabledToggle.addEventListener("change", () => {
+    core.invoke("toggle_speaking");
+  });
+  core.invoke("get_settings").then((cfg) => {
+    if (cfg && typeof cfg.enabled === "boolean") {
+      enabledToggle.checked = cfg.enabled;
+    }
+  }).catch(() => {});
+}
 historyBtn.addEventListener("click", () => toggleHistory());
 historyBtn.classList.add("active");
 loadHistory();
@@ -1128,6 +1143,10 @@ function applySettings(cfg) {
   }
   if (typeof cfg.history_panel_width === "number" && cfg.history_panel_width > 0) {
     applyHistoryPanelWidth(cfg.history_panel_width);
+  }
+  if (typeof cfg.enabled === "boolean") {
+    const t = document.getElementById("enabled-toggle");
+    if (t) t.checked = cfg.enabled;
   }
 }
 
