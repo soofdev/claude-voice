@@ -548,6 +548,41 @@ fn install_hook(store: tauri::State<Arc<SettingsStore>>) -> Result<String, Strin
     install_hook_impl(port)
 }
 
+fn show_settings_window(app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    }
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.unminimize();
+        // The popup is always-on-top (Floating level), so the settings
+        // window — opened at the normal level — would appear behind it.
+        // Temporarily flip always-on-top, raise focus, then unflag so
+        // the window obeys normal stacking once the user clicks away.
+        let _ = win.set_always_on_top(true);
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = win.set_always_on_top(false);
+    }
+}
+
+#[tauri::command]
+fn open_settings(app: tauri::AppHandle) {
+    show_settings_window(&app);
+}
+
+#[tauri::command]
+fn hook_installed() -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    let path = home.join(".claude").join("settings.json");
+    match std::fs::read_to_string(&path) {
+        Ok(s) => s.contains("/hook/stop"),
+        Err(_) => false,
+    }
+}
+
 fn install_hook_impl(port: u16) -> Result<String, String> {
     let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
     let path = home.join(".claude").join("settings.json");
@@ -687,6 +722,8 @@ pub fn run() {
             send_to_terminal,
             transcribe_audio,
             install_hook,
+            hook_installed,
+            open_settings,
             set_history_panel_width,
             get_sessions,
             set_session_enabled,
@@ -916,15 +953,7 @@ pub fn run() {
                         let _ = app.emit("session:focus", id);
                     }
                     "open_settings" => {
-                        #[cfg(target_os = "macos")]
-                        {
-                            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-                        }
-                        if let Some(win) = app.get_webview_window("settings") {
-                            let _ = win.unminimize();
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
+                        show_settings_window(app);
                     }
                     "quit" => {
                         let tts = app.state::<Arc<TtsEngine>>();
